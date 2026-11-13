@@ -1,0 +1,45 @@
+// Official-result dispatcher.
+//
+// fetchOfficialResult() is the pluggable seam: the rest of the app only
+// ever calls this function and receives the normalized shape below.
+//
+//   ok: true   -> { source, sourceLabel, candidateName, examNumber,
+//                   examYear, center, subjects: [{subject, grade}] }
+//   ok: false  -> { source, reason, message }   // not-configured | unavailable |
+//                                               // not-found | network | bad-response
+//
+// Selection follows RESULT_PROVIDER (config.js):
+//   auto    -> real provider when configured, demo fixture otherwise
+//   fixture -> always the demo fixture
+//   live    -> always the real provider (errors clearly when unconfigured)
+import { config, configured } from "../config.js";
+import fetchWaec from "./waec.js";
+import fetchNeco from "./neco.js";
+import fetchNabteb from "./nabteb.js";
+import fetchFixture from "./fixture.js";
+
+const BOARDS = {
+  waec: { fetch: fetchWaec, configured: () => configured.waec },
+  neco: { fetch: fetchNeco, configured: () => configured.neco },
+  nabteb: { fetch: fetchNabteb, configured: () => false },
+};
+
+export function supportedBoards() {
+  return Object.keys(BOARDS);
+}
+
+export async function fetchOfficialResult({ examType, examNumber, examYear, examSubType } = {}) {
+  const board = String(examType || "").toLowerCase();
+  const entry = BOARDS[board];
+  if (!entry) {
+    return { ok: false, source: board || "unknown", reason: "unknown-board", message: "Unknown examination board." };
+  }
+
+  // NABTEB has no API at all — never fixture it, always say so plainly.
+  if (board === "nabteb") return entry.fetch();
+
+  const useFixture = config.provider === "fixture" || (config.provider !== "live" && !entry.configured());
+  if (useFixture) return fetchFixture({ examType: board, examNumber, examYear });
+
+  return entry.fetch({ examNumber, examYear, examSubType });
+}

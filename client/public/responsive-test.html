@@ -1,0 +1,134 @@
+<!doctype html>
+<!--
+  Responsive test harness — Verify AI.
+  Served from client/public at /responsive-test.html.
+  Loads the app in a same-origin iframe pinned to an exact CSS width so
+  horizontal overflow can be measured at each breakpoint.
+
+  Usage: /responsive-test.html?w=360&p=/new
+    w  viewport width in px (default 390)
+    p  app path to load     (default /new)
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Responsive test harness — Verify AI</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; background: #6b7280; font-family: system-ui, sans-serif; }
+      .bar {
+        position: sticky; top: 0; z-index: 10;
+        background: #111827; color: #fff;
+        padding: 8px 14px; font-size: 13px;
+        display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+      }
+      .bar b { color: #6ee7b7; }
+      .bar .fail { color: #fca5a5; font-weight: 700; }
+      .frame-wrap { display: flex; justify-content: center; padding: 12px; }
+      iframe {
+        border: 0; background: #fff;
+        width: var(--w, 390px);
+        height: 900px;
+        max-width: 100%;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+      }
+      button {
+        background: #1f2937; color: #fff; border: 1px solid #374151;
+        border-radius: 6px; padding: 4px 10px; font-size: 13px; cursor: pointer;
+      }
+      button:hover { background: #374151; }
+      a { color: #93c5fd; }
+    </style>
+  </head>
+  <body>
+    <div class="bar">
+      <span>width <b id="w">–</b>px</span>
+      <span>path <b id="p">–</b></span>
+      <span>doc <b id="docw">–</b>px</span>
+      <span id="status">measuring…</span>
+      <span id="links"></span>
+    </div>
+    <div class="frame-wrap">
+      <iframe id="frame" title="app under test"></iframe>
+    </div>
+
+    <script>
+      const q = new URLSearchParams(location.search);
+      const width = Math.max(200, Math.min(4000, parseInt(q.get("w") || "390", 10) || 390));
+      const path = q.get("p") || "/new";
+
+      document.documentElement.style.setProperty("--w", width + "px");
+      document.getElementById("w").textContent = width;
+      document.getElementById("p").textContent = path;
+
+      // Quick links to the other breakpoints / pages.
+      const links = document.getElementById("links");
+      for (const w of [360, 390, 414, 768]) {
+        const a = document.createElement("a");
+        a.href = `?w=${w}&p=${encodeURIComponent(path)}`;
+        a.textContent = w + "px";
+        a.style.marginRight = "8px";
+        links.appendChild(a);
+      }
+
+      const frame = document.getElementById("frame");
+      frame.src = path;
+
+      // Measure horizontal overflow inside the app document.
+      function measure() {
+        const status = document.getElementById("status");
+        let doc;
+        try {
+          doc = frame.contentDocument;
+        } catch {
+          status.innerHTML = '<span class="fail">cross-origin — cannot measure</span>';
+          return;
+        }
+        if (!doc || !doc.documentElement) {
+          status.textContent = "frame not ready";
+          return;
+        }
+
+        const root = doc.documentElement;
+        const body = doc.body;
+        const docW = Math.max(root.scrollWidth, body ? body.scrollWidth : 0);
+        document.getElementById("docw").textContent = docW;
+
+        // Document-level horizontal scroll is the authoritative overflow
+        // test. Dense tables/tab strips live in overflow-x:auto wrappers and
+        // are supposed to be wider than the viewport, so their inner width
+        // is only reported as a diagnostic when the page itself overflows.
+        const vw = frame.clientWidth;
+        const offenders = [];
+        if (docW > vw + 1) {
+          const all = doc.querySelectorAll("*");
+          for (const el of all) {
+            const r = el.getBoundingClientRect();
+            if (r.width === 0 && r.height === 0) continue;
+            if (r.right <= 0) continue; // parked off-canvas (closed drawer)
+            if (r.right > vw + 1) {
+              const cls = typeof el.className === "string" && el.className ? "." + el.className.split(" ").filter(Boolean).slice(0, 2).join(".") : "";
+              offenders.push(`${el.tagName.toLowerCase()}${cls} (right=${Math.round(r.right)})`);
+            }
+          }
+        }
+
+        if (docW > vw + 1) {
+          status.innerHTML =
+            `<span class="fail">OVERFLOW ${docW}px > ${vw}px</span>` +
+            (offenders.length ? " — " + offenders.slice(0, 6).join(", ") : "");
+        } else {
+          status.textContent = `no overflow (doc ${docW}px ≤ viewport ${vw}px, ${all0(doc)} elements)`;
+        }
+      }
+
+      function all0(d) {
+        return d.querySelectorAll("*").length;
+      }
+
+      frame.addEventListener("load", () => setTimeout(measure, 600));
+      setTimeout(measure, 2500);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "verify-ai-clone",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Exact clone of the Verify AI results-verification app (React + Vite client, Node/Express server)",
+  "scripts": {
+    "dev": "concurrently -n server,client -c green,cyan \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
+    "server": "npm run dev --prefix server",
+    "client": "npm run dev --prefix client",
+    "build": "npm run build --prefix client",
+    "start": "npm run start --prefix server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
