@@ -7,6 +7,7 @@ import db from "./db.js";
 import { fetchOfficialResult, supportedBoards } from "./providers/index.js";
 import readResultImage from "./vision/index.js";
 import { runComparison, summarizeComparison } from "./compare.js";
+import kakaverify from "./providers/kakaverify.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -254,6 +255,149 @@ app.put("/api/records/:id", (req, res) => {
   const record = db.updateRecord(req.params.id, req.body || {});
   if (!record) return res.status(404).json({ error: "Record not found" });
   res.json({ record });
+});
+
+// --- KakaVerify.ng endpoints --------------------------------------------
+// Wallet queries and token/PIN purchases via KakaVerify (https://developers.kakaverify.ng).
+// All require the KAKAVERIFY_API_KEY configured in server/.env.
+
+app.get("/api/kakaverify/balance", async (_req, res) => {
+  try {
+    const result = await kakaverify.fetchWalletBalance();
+    if (!result.ok) return res.status(result.reason === "not-configured" ? 400 : 502).json(result);
+    res.json(result);
+  } catch (e) {
+    console.error("kakaverify balance failed:", e);
+    res.status(500).json({ error: "Could not fetch KakaVerify wallet balance." });
+  }
+});
+
+app.get("/api/kakaverify/history", async (req, res) => {
+  try {
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+    const result = await kakaverify.fetchWalletHistory({ limit });
+    if (!result.ok) return res.status(result.reason === "not-configured" ? 400 : 502).json(result);
+    res.json(result);
+  } catch (e) {
+    console.error("kakaverify history failed:", e);
+    res.status(500).json({ error: "Could not fetch KakaVerify transaction history." });
+  }
+});
+
+// Purchase an exam token (WAEC scratch card, NECO token, JAMB PIN, etc.).
+app.post("/api/kakaverify/purchase-token", async (req, res) => {
+  try {
+    const b = req.body || {};
+    const examType = String(b.examType ?? "").toLowerCase().trim();
+    const quantity = Math.min(100, Math.max(1, Number(b.quantity) || 1));
+    const phoneNumber = String(b.phoneNumber ?? "").trim();
+    if (!examType) return res.status(400).json({ error: "Provide an exam type (waec, neco, nabteb, waec_nysc, nbais)." });
+    const result = await kakaverify.purchaseExamToken({ examType, quantity, phoneNumber });
+    if (!result.ok) return res.status(result.reason === "not-configured" ? 400 : 502).json(result);
+    res.json(result);
+  } catch (e) {
+    console.error("kakaverify purchase-token failed:", e);
+    res.status(500).json({ error: "Could not purchase exam token from KakaVerify." });
+  }
+});
+
+// Purchase a WAEC Registration PIN (WASSCE Private Candidates).
+app.post("/api/kakaverify/purchase-waec-pin", async (req, res) => {
+  try {
+    const b = req.body || {};
+    const phone = String(b.phone ?? "").trim();
+    const variationCode = String(b.variationCode ?? "waec-registraion").trim();
+    const result = await kakaverify.purchaseWaecPin({ phone, variationCode });
+    if (!result.ok) return res.status(result.reason === "not-configured" ? 400 : 502).json(result);
+    res.json(result);
+  } catch (e) {
+    console.error("kakaverify purchase-waec-pin failed:", e);
+    res.status(500).json({ error: "Could not purchase WAEC PIN from KakaVerify." });
+  }
+});
+
+// List active WAEC ePIN packages.
+app.get("/api/kakaverify/waec-packages", async (_req, res) => {
+  try {
+    const result = await kakaverify.fetchWaecPackages();
+    if (!result.ok) return res.status(result.reason === "not-configured" ? 400 : 502).json(result);
+    res.json(result);
+  } catch (e) {
+    console.error("kakaverify waec-packages failed:", e);
+    res.status(500).json({ error: "Could not fetch WAEC packages from KakaVerify." });
+  }
+});
+
+// Check WAEC ePIN purchase status.
+app.get("/api/kakaverify/waec-status", async (req, res) => {
+  try {
+    const { request_id, transref, limit } = req.query;
+    const result = await kakaverify.fetchWaecStatus({ requestId: request_id, transref, limit: Number(limit) || 20 });
+    if (!result.ok) return res.status(result.reason === "not-configured" ? 400 : 502).json(result);
+    res.json(result);
+  } catch (e) {
+    console.error("kakaverify waec-status failed:", e);
+    res.status(500).json({ error: "Could not fetch WAEC purchase status from KakaVerify." });
+  }
+});
+
+// List active JAMB packages.
+app.get("/api/kakaverify/jamb-packages", async (_req, res) => {
+  try {
+    const result = await kakaverify.fetchJambPackages();
+    if (!result.ok) return res.status(result.reason === "not-configured" ? 400 : 502).json(result);
+    res.json(result);
+  } catch (e) {
+    console.error("kakaverify jamb-packages failed:", e);
+    res.status(500).json({ error: "Could not fetch JAMB packages from KakaVerify." });
+  }
+});
+
+// Verify a JAMB Profile Code (returns candidate name).
+app.post("/api/kakaverify/jamb-verify", async (req, res) => {
+  try {
+    const b = req.body || {};
+    const profileId = String(b.profileId ?? "").trim();
+    const variationCode = String(b.variationCode ?? "utme-mock").trim();
+    if (!profileId) return res.status(400).json({ error: "Provide a 10-digit JAMB Profile Code." });
+    const result = await kakaverify.verifyJambProfile({ profileId, variationCode });
+    if (!result.ok) return res.status(result.reason === "not-configured" ? 400 : 502).json(result);
+    res.json(result);
+  } catch (e) {
+    console.error("kakaverify jamb-verify failed:", e);
+    res.status(500).json({ error: "Could not verify JAMB profile via KakaVerify." });
+  }
+});
+
+// Purchase a JAMB ePIN.
+app.post("/api/kakaverify/jamb-purchase", async (req, res) => {
+  try {
+    const b = req.body || {};
+    const profileId = String(b.profileId ?? "").trim();
+    const variationCode = String(b.variationCode ?? "utme-mock").trim();
+    const phone = String(b.phone ?? "").trim();
+    const customerName = String(b.customerName ?? "").trim();
+    if (!profileId) return res.status(400).json({ error: "Provide a 10-digit JAMB Profile Code." });
+    const result = await kakaverify.purchaseJambPin({ profileId, variationCode, phone, customerName });
+    if (!result.ok) return res.status(result.reason === "not-configured" ? 400 : 502).json(result);
+    res.json(result);
+  } catch (e) {
+    console.error("kakaverify jamb-purchase failed:", e);
+    res.status(500).json({ error: "Could not purchase JAMB PIN from KakaVerify." });
+  }
+});
+
+// Check JAMB purchase status.
+app.get("/api/kakaverify/jamb-status", async (req, res) => {
+  try {
+    const { request_id, transref, limit } = req.query;
+    const result = await kakaverify.fetchJambStatus({ requestId: request_id, transref, limit: Number(limit) || 20 });
+    if (!result.ok) return res.status(result.reason === "not-configured" ? 400 : 502).json(result);
+    res.json(result);
+  } catch (e) {
+    console.error("kakaverify jamb-status failed:", e);
+    res.status(500).json({ error: "Could not fetch JAMB purchase status from KakaVerify." });
+  }
 });
 
 // Uploaded result photos (public so <img> tags can load them).

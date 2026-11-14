@@ -9,14 +9,16 @@
 //                                               // not-found | network | bad-response
 //
 // Selection follows RESULT_PROVIDER (config.js):
-//   auto    -> real provider when configured, demo fixture otherwise
-//   fixture -> always the demo fixture
-//   live    -> always the real provider (errors clearly when unconfigured)
+//   auto       -> real provider when configured, demo fixture otherwise
+//   fixture    -> always the demo fixture
+//   live       -> always the real provider (errors clearly when unconfigured)
+//   kakaverify -> KakaVerify token purchase + official portal (costs money)
 import { config, configured } from "../config.js";
 import fetchWaec from "./waec.js";
 import fetchNeco from "./neco.js";
 import fetchNabteb from "./nabteb.js";
 import fetchFixture from "./fixture.js";
+import { verifyViaKakaverify } from "./kakaverify-flow.js";
 
 const BOARDS = {
   waec: { fetch: fetchWaec, configured: () => configured.waec },
@@ -28,8 +30,18 @@ export function supportedBoards() {
   return Object.keys(BOARDS);
 }
 
-export async function fetchOfficialResult({ examType, examNumber, examYear, examSubType } = {}) {
-  const board = String(examType || "").toLowerCase();
+export async function fetchOfficialResult({ examType, examNumber, examYear, examSubType, phoneNumber } = {}) {
+  const board = String(examType || "").toLowerCase().trim();
+
+  // KakaVerify path — strict opt-in via RESULT_PROVIDER=kakaverify.
+  // It debits a real wallet balance on every verification, so 'auto' must
+  // never reach it: auto falls back to the demo fixture instead.
+  const useKakaverify = config.provider === "kakaverify";
+
+  if (useKakaverify && configured.kakaverify) {
+    return verifyViaKakaverify({ examType: board, examNumber, examYear, examSubType, phoneNumber });
+  }
+
   const entry = BOARDS[board];
   if (!entry) {
     return { ok: false, source: board || "unknown", reason: "unknown-board", message: "Unknown examination board." };

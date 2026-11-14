@@ -42,12 +42,18 @@ export const config = {
   necoApiKey: process.env.NECO_API_KEY || "",
   necoToken: process.env.NECO_TOKEN || "",
   necoPayRef: process.env.NECO_PAYREF || "",
+
+  // KakaVerify.ng (https://developers.kakaverify.ng) — exam token/PIN provider.
+  kakaverifyApiKey: process.env.KAKAVERIFY_API_KEY || "",
+  kakaverifyBaseUrl: (process.env.KAKAVERIFY_BASE_URL || "https://www.app.kakaverify.ng/auth/api/v1").replace(/\/+$/, ""),
+  kakaverifyPhone: process.env.KAKAVERIFY_PHONE || "",
 };
 
 // Which real providers are fully configured (keys + tokens present).
 export const configured = {
   waec: Boolean(config.waecApiSecret),
   neco: Boolean(config.necoApiKey && config.necoToken && config.necoPayRef),
+  kakaverify: Boolean(config.kakaverifyApiKey),
 };
 
 export default config;
