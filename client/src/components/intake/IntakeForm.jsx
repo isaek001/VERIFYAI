@@ -1,6 +1,5 @@
 import { Icon, icons } from "../Icon.jsx";
 import SourceDropzone from "./SourceDropzone.jsx";
-import { WarnBox } from "../Notice.jsx";
 
 const BOARDS = [
   { value: "waec", label: "WAEC" },
@@ -11,6 +10,12 @@ const BOARDS = [
 const NECO_SUBTYPES = [
   { value: "SSCEINT", label: "Internal" },
   { value: "SSCEEXT", label: "External" },
+];
+
+const NABTEB_SUBTYPES = [
+  { value: "MJ", label: "May/June" },
+  { value: "ND", label: "Nov/Dec" },
+  { value: "NCEE", label: "NCEE" },
 ];
 
 function Field({ label, required, placeholder, value, onChange, error, hint, inputMode, maxLength }) {
@@ -62,7 +67,7 @@ export default function IntakeForm({
   onRun,
   busy,
 }) {
-  const needsYear = form.examType === "waec" || form.examType === "neco";
+  const needsYear = true; // every board requires the exam year to query the official record
 
   return (
     <div className="panel form-panel">
@@ -92,6 +97,15 @@ export default function IntakeForm({
             onChange={setField("examSubType")}
           />
         )}
+        {form.examType === "nabteb" && (
+          <Segments
+            legend="Exam type"
+            name="examSubType"
+            options={NABTEB_SUBTYPES}
+            value={form.examSubType === "SSCEINT" || form.examSubType === "SSCEEXT" ? "MJ" : form.examSubType}
+            onChange={setField("examSubType")}
+          />
+        )}
         <Field
           label="Student exam number"
           required
@@ -115,7 +129,40 @@ export default function IntakeForm({
       </div>
 
       {form.examType === "nabteb" && (
-        <WarnBox>NABTEB has no public result API — the official comparison source is unavailable and every NABTEB record goes to manual review.</WarnBox>
+        <>
+          <div className="field-label group-label">
+            NABTEB OFFICIAL CHECK <span className="optional">Optional</span>
+          </div>
+          <p className="muted" style={{ marginTop: 0 }}>
+            Results are checked live against the official NABTEB results API. The free allowance is tried first — add a
+            purchased ePIN below if the free check is exhausted.
+          </p>
+          <div className="field-grid">
+            <Field
+              label="NIN"
+              placeholder="11-digit National Identification Number"
+              value={form.nin || ""}
+              onChange={setField("nin")}
+              inputMode="numeric"
+              maxLength={11}
+              hint={!errors.nin ? "Improves candidate matching (optional)." : undefined}
+            />
+            <Field
+              label="ePIN serial"
+              placeholder="Serial number printed on the ePIN"
+              value={form.serialNumber || ""}
+              onChange={setField("serialNumber")}
+              hint={!errors.serialNumber ? "Only needed when the free check is used up." : undefined}
+            />
+            <Field
+              label="ePIN code"
+              placeholder="PIN code printed on the ePIN"
+              value={form.pinCode || ""}
+              onChange={setField("pinCode")}
+              hint={!errors.pinCode ? "Paired with the serial above." : undefined}
+            />
+          </div>
+        </>
       )}
 
       <div className="field-label group-label">

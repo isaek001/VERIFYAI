@@ -5,7 +5,15 @@ import IntakeForm from "../components/intake/IntakeForm.jsx";
 import ComparisonResults from "../components/intake/ComparisonResults.jsx";
 import GuidanceCards from "../components/intake/GuidanceCards.jsx";
 
-const EMPTY_FORM = { examType: "waec", examNumber: "", examYear: "", examSubType: "SSCEINT" };
+const EMPTY_FORM = {
+  examType: "waec",
+  examNumber: "",
+  examYear: "",
+  examSubType: "SSCEINT",
+  nin: "",
+  serialNumber: "",
+  pinCode: "",
+};
 
 const BOARD_LABEL = { waec: "WAEC WASSCE", neco: "NECO SSCE", nabteb: "NABTEB" };
 
@@ -23,7 +31,7 @@ function validate(form, image) {
   const number = form.examNumber.trim();
   if (!number) errors.examNumber = "Enter the student's exam number.";
   else if (number.length < 4) errors.examNumber = "Exam numbers have at least 4 characters.";
-  if (form.examType !== "nabteb" && !/^\d{4}$/.test(form.examYear.trim())) {
+  if (!/^\d{4}$/.test(form.examYear.trim())) {
     errors.examYear = "Enter the four-digit examination year, e.g. 2024.";
   }
   if (!image) errors.image = "Upload a photo of the physical result.";
@@ -78,7 +86,10 @@ export default function NewVerification() {
         examType: form.examType,
         examNumber: form.examNumber.trim(),
         examYear: form.examYear.trim(),
-        examSubType: form.examSubType,
+        examSubType: form.examType === "nabteb" && form.examSubType === "SSCEINT" ? "MJ" : form.examSubType,
+        nin: form.nin.trim(),
+        serialNumber: form.serialNumber.trim(),
+        pinCode: form.pinCode.trim(),
         image,
         mimeType: mimeOf(image),
       });

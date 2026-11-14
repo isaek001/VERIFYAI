@@ -30,8 +30,15 @@ export function supportedBoards() {
   return Object.keys(BOARDS);
 }
 
-export async function fetchOfficialResult({ examType, examNumber, examYear, examSubType, phoneNumber } = {}) {
+export async function fetchOfficialResult({ examType, examNumber, examYear, examSubType, phoneNumber, nin, gender, serialNumber, pinCode } = {}) {
   const board = String(examType || "").toLowerCase().trim();
+
+  // NABTEB first: its official results API needs no key and can check with a
+  // purchased ePIN, so it works in every provider mode (Kakaverify only sells
+  // NABTEB tokens — it has no result-check endpoint of its own).
+  if (board === "nabteb") {
+    return fetchNabteb({ examNumber, examYear, examType: board, examSubType, nin, gender, serialNumber, pinCode });
+  }
 
   // KakaVerify path — strict opt-in via RESULT_PROVIDER=kakaverify.
   // It debits a real wallet balance on every verification, so 'auto' must
@@ -46,9 +53,6 @@ export async function fetchOfficialResult({ examType, examNumber, examYear, exam
   if (!entry) {
     return { ok: false, source: board || "unknown", reason: "unknown-board", message: "Unknown examination board." };
   }
-
-  // NABTEB has no API at all — never fixture it, always say so plainly.
-  if (board === "nabteb") return entry.fetch();
 
   const useFixture = config.provider === "fixture" || (config.provider !== "live" && !entry.configured());
   if (useFixture) return fetchFixture({ examType: board, examNumber, examYear });

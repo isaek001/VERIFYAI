@@ -165,14 +165,30 @@ app.post("/api/verify", async (req, res) => {
     const examType = String(b.examType ?? "").toLowerCase().trim();
     const examNumber = String(b.examNumber ?? "").trim();
     const examYear = String(b.examYear ?? "").trim();
-    const examSubTypeRaw = String(b.examSubType ?? "").toUpperCase().trim();
-    const examSubType = NECO_SUBTYPES.has(examSubTypeRaw) ? examSubTypeRaw : "SSCEINT";
     const image = typeof b.image === "string" ? b.image : "";
+
+    // Board-specific sub-types: NECO -> SSCEINT/SSCEEXT,
+    // NABTEB -> NCEE/MJ/ND (anything else falls back per board).
+    const examSubTypeRaw = String(b.examSubType ?? "").toUpperCase().trim();
+    let examSubType;
+    if (examType === "neco") examSubType = NECO_SUBTYPES.has(examSubTypeRaw) ? examSubTypeRaw : "SSCEINT";
+    else if (examType === "nabteb") examSubType = ["NCEE", "MJ", "ND"].includes(examSubTypeRaw) ? examSubTypeRaw : "MJ";
+    else examSubType = examSubTypeRaw;
+
+    // Optional extras that flow through to the providers:
+    //   phoneNumber -> KakaVerify token delivery
+    //   nin/gender  -> NABTEB candidate lookup
+    //   serialNumber/pinCode -> NABTEB ePIN check
+    const phoneNumber = String(b.phoneNumber ?? "").trim();
+    const nin = String(b.nin ?? "").trim();
+    const gender = String(b.gender ?? "").trim();
+    const serialNumber = String(b.serialNumber ?? "").trim();
+    const pinCode = String(b.pinCode ?? "").trim();
 
     const errors = [];
     if (!BOARDS.has(examType)) errors.push("Select an examination board (WAEC, NECO or NABTEB).");
     if (examNumber.length < 4) errors.push("Enter the student's exam number.");
-    if ((examType === "waec" || examType === "neco") && !/^\d{4}$/.test(examYear)) {
+    if (!/^\d{4}$/.test(examYear)) {
       errors.push("Enter the four-digit examination year.");
     }
     const mimeMatch = IMAGE_DATA_URL.exec(image);
@@ -182,7 +198,7 @@ app.post("/api/verify", async (req, res) => {
     const mimeType = `image/${mimeMatch[1] === "jpg" ? "jpeg" : mimeMatch[1]}`;
 
     const [official, extracted] = await Promise.all([
-      fetchOfficialResult({ examType, examNumber, examYear, examSubType }),
+      fetchOfficialResult({ examType, examNumber, examYear, examSubType, phoneNumber, nin, gender, serialNumber, pinCode }),
       readResultImage({ dataUrl: image, mimeType, examType }),
     ]);
 

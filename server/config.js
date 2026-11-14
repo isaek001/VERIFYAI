@@ -43,6 +43,9 @@ export const config = {
   necoToken: process.env.NECO_TOKEN || "",
   necoPayRef: process.env.NECO_PAYREF || "",
 
+  // NABTEB official results API (same backend as student.nabteb.gov.ng).
+  nabtebApiBaseUrl: (process.env.NABTEB_API_BASE_URL || "https://api.nabteb.gov.ng").replace(/\/+$/, ""),
+
   // KakaVerify.ng (https://developers.kakaverify.ng) — exam token/PIN provider.
   kakaverifyApiKey: process.env.KAKAVERIFY_API_KEY || "",
   kakaverifyBaseUrl: (process.env.KAKAVERIFY_BASE_URL || "https://www.app.kakaverify.ng/auth/api/v1").replace(/\/+$/, ""),
