@@ -23,6 +23,10 @@ export default function RecordModal({ record, onClose, onDecide, busy }) {
 
   if (!record) return null;
 
+  // A human decision already exists (Verified or Escalated): the record is
+  // decided, so the decision controls no longer apply — only Close remains.
+  const decided = record.status === "Verified" || record.status === "Escalated";
+
   const field = (label, value) => (
     <div className="result-field">
       <span>{label}</span>
@@ -83,32 +87,43 @@ export default function RecordModal({ record, onClose, onDecide, busy }) {
           </div>
         )}
 
-        <div className="review-box">
-          <label className="field">
-            <span className="field-label">Reviewer name</span>
-            <input value={reviewer} onChange={(e) => setReviewer(e.target.value)} />
-          </label>
-          <label className="field">
-            <span className="field-label">Review note</span>
-            <textarea
-              rows={2}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Optional audit note"
-            />
-          </label>
-        </div>
+        {decided ? (
+          <div className="review-box">
+            <span className="field-label">Audit note</span>
+            <p className="source-text">{record.reviewNote || "No audit note recorded."}</p>
+          </div>
+        ) : (
+          <div className="review-box">
+            <label className="field">
+              <span className="field-label">Reviewer name</span>
+              <input value={reviewer} onChange={(e) => setReviewer(e.target.value)} />
+            </label>
+            <label className="field">
+              <span className="field-label">Review note</span>
+              <textarea
+                rows={2}
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Optional audit note"
+              />
+            </label>
+          </div>
+        )}
 
         <div className="modal-actions">
           <button className="btn ghost" onClick={onClose}>
             Close
           </button>
-          <button className="btn danger" disabled={busy} onClick={() => onDecide("Escalated", reviewer, note)}>
-            Escalate
-          </button>
-          <button className="btn primary" disabled={busy} onClick={() => onDecide("Verified", reviewer, note)}>
-            <Icon d={icons.check} size={16} /> Mark verified
-          </button>
+          {!decided && (
+            <>
+              <button className="btn danger" disabled={busy} onClick={() => onDecide("Escalated", reviewer, note)}>
+                Escalate
+              </button>
+              <button className="btn primary" disabled={busy} onClick={() => onDecide("Verified", reviewer, note)}>
+                <Icon d={icons.check} size={16} /> Mark verified
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
