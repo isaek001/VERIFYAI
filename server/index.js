@@ -56,20 +56,24 @@ app.get("/api/health", (_req, res) => {
 });
 
 // --- Auth -------------------------------------------------------------
-// Sessions are bearer tokens held in the client's localStorage and a
-// server-side map (swap for Supabase Auth later, see db.js).
+// Sessions are bearer tokens held in the client's localStorage and the
+// sessions table in Supabase (see db.js).
 
 function tokenFrom(req) {
   const header = req.headers.authorization || "";
   return header.startsWith("Bearer ") ? header.slice(7) : null;
 }
 
-function requireAuth(req, res, next) {
-  const user = db.getSessionUser(tokenFrom(req));
+// Wraps an async handler so a rejected query becomes a normal Express
+// error instead of a hung request.
+const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
+const requireAuth = wrap(async (req, res, next) => {
+  const user = await db.getSessionUser(tokenFrom(req));
   if (!user) return res.status(401).json({ error: "Sign in to continue." });
   req.user = user;
   next();
-}
+});
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -94,7 +98,7 @@ function noteLoginFail(email) {
   loginFails.set(email, entry);
 }
 
-app.post("/api/auth/signup", (req, res) => {
+app.post("/api/auth/signup", wrap(async (req, res) => {
   const body = req.body || {};
   const name = String(body.name ?? "").trim();
   const email = String(body.email ?? "").trim().toLowerCase();
@@ -103,16 +107,16 @@ app.post("/api/auth/signup", (req, res) => {
   if (!name) return res.status(400).json({ error: "Enter your full name." });
   if (!EMAIL_RE.test(email)) return res.status(400).json({ error: "Enter a valid email address." });
   if (password.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters." });
-  if (db.findUserByEmail(email)) {
+  if (await db.findUserByEmail(email)) {
     return res.status(409).json({ error: "An account with that email already exists." });
   }
 
-  const user = db.createUser({ name, email, password });
-  const token = db.createSession(user.id);
+  const user = await db.createUser({ name, email, password });
+  const token = await db.createSession(user.id);
   res.status(201).json({ token, user });
-});
+}));
 
-app.post("/api/auth/login", (req, res) => {
+app.post("/api/auth/login", wrap(async (req, res) => {
   const body = req.body || {};
   const email = String(body.email ?? "").trim().toLowerCase();
   const password = String(body.password ?? "");
@@ -124,20 +128,20 @@ app.post("/api/auth/login", (req, res) => {
     return res.status(429).json({ error: "Too many attempts. Try again in 15 minutes." });
   }
 
-  const user = db.findUserByEmail(email);
+  const user = await db.findUserByEmail(email);
   if (!user || !db.verifyUserPassword(user, password)) {
     noteLoginFail(email);
     return res.status(401).json({ error: "Email or password is incorrect." });
   }
 
   loginFails.delete(email);
-  res.json({ token: db.createSession(user.id), user: db.publicUser(user) });
-});
+  res.json({ token: await db.createSession(user.id), user: db.publicUser(user) });
+}));
 
-app.post("/api/auth/logout", requireAuth, (req, res) => {
-  db.deleteSession(tokenFrom(req));
+app.post("/api/auth/logout", requireAuth, wrap(async (req, res) => {
+  await db.deleteSession(tokenFrom(req));
   res.json({ ok: true });
-});
+}));
 
 app.get("/api/auth/me", requireAuth, (req, res) => {
   res.json({ user: req.user });
@@ -223,11 +227,11 @@ app.post("/api/analyze", (req, res) => {
   });
 });
 
-app.get("/api/records", (_req, res) => {
-  res.json({ records: db.listRecords() });
-});
+app.get("/api/records", wrap(async (_req, res) => {
+  res.json({ records: await db.listRecords() });
+}));
 
-app.post("/api/records", (req, res) => {
+app.post("/api/records", wrap(async (req, res) => {
   const body = req.body || {};
 
   // Verification record: photo + official/extracted/comparison payloads.
@@ -238,7 +242,8 @@ app.post("/api/records", (req, res) => {
     const saved = saveUploadedImage(body.image);
     if (saved.error) return res.status(400).json({ error: saved.error });
     const { image, ...rest } = body;
-    return res.status(201).json({ record: db.createRecord({ ...rest, imageUrl: saved.imageUrl }) });
+    const record = await db.createRecord({ ...rest, imageUrl: saved.imageUrl });
+    return res.status(201).json({ record });
   }
 
   // Original manual-entry flow.
@@ -248,14 +253,15 @@ app.post("/api/records", (req, res) => {
   if (!candidateId || !exam || !result) {
     return res.status(400).json({ error: "Candidate / record ID, examination and result are required." });
   }
-  res.status(201).json({ record: db.createRecord(body) });
-});
+  const record = await db.createRecord(body);
+  res.status(201).json({ record });
+}));
 
-app.put("/api/records/:id", (req, res) => {
-  const record = db.updateRecord(req.params.id, req.body || {});
+app.put("/api/records/:id", wrap(async (req, res) => {
+  const record = await db.updateRecord(req.params.id, req.body || {});
   if (!record) return res.status(404).json({ error: "Record not found" });
   res.json({ record });
-});
+}));
 
 // --- KakaVerify.ng endpoints --------------------------------------------
 // Wallet queries and token/PIN purchases via KakaVerify (https://developers.kakaverify.ng).
