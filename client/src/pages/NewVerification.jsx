@@ -111,11 +111,13 @@ export default function NewVerification() {
     const subtypeSuffix = form.examType === "neco" ? ` (${form.examSubType === "SSCEEXT" ? "External" : "Internal"})` : "";
     const examLabel = `${BOARD_LABEL[form.examType]}${subtypeSuffix}${yearSuffix}`;
 
-    const candidateName = official?.ok
-      ? official.candidateName
-      : extracted?.ok
-        ? extracted.candidateName
-        : "";
+    // The record is filed from the uploaded document — the photo the officer
+    // submitted — not from the exam board's portal. The portal copy is still
+    // stored alongside it (official) so the side-by-side comparison, and the
+    // differences printed on the PDF, travel with the record.
+    const fromPhoto = extracted?.ok ? String(extracted.candidateName || "").trim() : "";
+    const fromPortal = official?.ok ? String(official.candidateName || "").trim() : "";
+    const candidateName = fromPhoto || fromPortal;
 
     setBusy(true);
     try {
