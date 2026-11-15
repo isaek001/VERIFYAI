@@ -4,7 +4,7 @@
 import { icons } from "../components/Icon.jsx";
 
 export const ROUTES = [
-  { path: "/", label: "Dashboard", icon: icons.dashboard, end: true, short: "Dashboard" },
+  { path: "/dashboard", label: "Dashboard", icon: icons.dashboard, end: true, short: "Dashboard" },
   { path: "/new", label: "New verification", icon: icons.file, trailing: true, short: "New" },
   { path: "/archive", label: "Records archive", icon: icons.archive, short: "Archive" },
   { path: "/reports", label: "Reports", icon: icons.reports, short: "Reports" },

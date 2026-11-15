@@ -2,6 +2,7 @@
   "name": "verify-ai-clone",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "Exact clone of the Verify AI results-verification app (React + Vite client, Node/Express server)",
   "scripts": {
     "dev": "concurrently -n server,client -c green,cyan \"npm run dev --prefix server\" \"npm run dev --prefix client\"",

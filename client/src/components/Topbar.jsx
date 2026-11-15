@@ -10,7 +10,7 @@ export default function Topbar({ page, theme, onToggleTheme, onOpenMenu, user })
       </button>
       {/* Compact brand mark — only visible on phones, where the
           sidebar (and its brand block) is replaced by the bottom nav. */}
-      <NavLink to="/" className="mobile-brand" aria-label="Verify AI dashboard">
+      <NavLink to="/dashboard" className="mobile-brand" aria-label="Verify AI dashboard">
         <span className="brand-mark mini">
           <Icon d={icons.shield} size={15} strokeWidth={2} />
         </span>

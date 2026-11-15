@@ -60,6 +60,7 @@ create table if not exists public.records (
   "examYear"      text not null default '',
   "examSubType"   text not null default '',
   "imageUrl"      text,
+  "imageData"     text,
   official        jsonb,
   extracted       jsonb,
   comparison      jsonb,
@@ -76,6 +77,10 @@ create table if not exists public.sessions (
 );
 
 create index if not exists records_created_at_idx on public.records ("createdAt" desc);
+
+-- Photo bytes column for databases created before image storage moved
+-- from disk into the database (idempotent for existing installs).
+alter table public.records add column if not exists "imageData" text;
 
 -- Row Level Security: only this server touches the tables (it connects as
 -- the table owner, which bypasses RLS). The publishable/anon key gets
@@ -107,10 +112,20 @@ end $$;
 // pg as plain JS values.
 
 async function listRecords() {
+  // Everything except imageData: photo bytes would balloon list responses
+  // (Vercel caps them at 4.5 MB) — the client loads them via imageUrl.
   const { rows } = await pool.query(
-    'select * from public.records order by "createdAt" desc'
+    `select id, "candidateId", "candidateName", exam, result, findings, "sourceText",
+            status, "examType", "examNumber", "examYear", "examSubType", "imageUrl",
+            official, extracted, comparison, verdict, "createdAt", "reviewedBy", "reviewNote"
+     from public.records order by "createdAt" desc`
   );
   return rows;
+}
+
+async function getRecordImage(id) {
+  const { rows } = await pool.query('select "imageData" from public.records where id = $1', [id]);
+  return rows[0]?.imageData || null;
 }
 
 async function getRecord(id) {
@@ -119,8 +134,10 @@ async function getRecord(id) {
 }
 
 async function createRecord(data) {
+  const id = `rec-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const imageData = typeof data.imageData === "string" ? data.imageData : null;
   const record = {
-    id: `rec-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    id,
     candidateId: String(data.candidateId ?? "").trim(),
     candidateName: String(data.candidateName ?? "").trim(),
     exam: String(data.exam ?? "").trim(),
@@ -133,7 +150,9 @@ async function createRecord(data) {
     examNumber: String(data.examNumber ?? "").trim(),
     examYear: String(data.examYear ?? "").trim(),
     examSubType: String(data.examSubType ?? "").trim(),
-    imageUrl: data.imageUrl || null,
+    // Photos are stored as bytes (imageData) and served by GET /api/uploads/:id.
+    imageData,
+    imageUrl: data.imageUrl || (imageData ? `/api/uploads/${id}` : null),
     official: data.official || null,
     extracted: data.extracted || null,
     comparison: data.comparison || null,
@@ -151,9 +170,9 @@ async function createRecord(data) {
   await pool.query(
     `insert into public.records (
        id, "candidateId", "candidateName", exam, result, findings, "sourceText",
-       status, "examType", "examNumber", "examYear", "examSubType", "imageUrl",
+       status, "examType", "examNumber", "examYear", "examSubType", "imageUrl", "imageData",
        official, extracted, comparison, verdict, "createdAt", "reviewedBy", "reviewNote"
-     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
     [
       record.id,
       record.candidateId,
@@ -168,6 +187,7 @@ async function createRecord(data) {
       record.examYear,
       record.examSubType,
       record.imageUrl,
+      record.imageData,
       json(record.official),
       json(record.extracted),
       json(record.comparison),
@@ -177,6 +197,8 @@ async function createRecord(data) {
       record.reviewNote,
     ]
   );
+  // The photo was just uploaded by the caller — no need to echo it back.
+  delete record.imageData;
   return record;
 }
 
@@ -197,6 +219,8 @@ async function updateRecord(id, patch) {
     `update public.records set ${sets.join(", ")} where id = $${vals.length} returning *`,
     vals
   );
+  // Never hand photo bytes to callers; they fetch them via /api/uploads/:id.
+  if (rows[0]) delete rows[0].imageData;
   return rows[0] || null;
 }
 
@@ -284,6 +308,7 @@ try {
 export default {
   listRecords,
   getRecord,
+  getRecordImage,
   createRecord,
   updateRecord,
   findUserByEmail,

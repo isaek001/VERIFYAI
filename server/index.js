@@ -16,23 +16,27 @@ const PORT = process.env.PORT || 4000;
 app.use(cors());
 app.use(express.json({ limit: "12mb" }));
 
-// Uploaded result photos live on disk (swap for Supabase Storage later).
-// Public on purpose: <img> tags cannot send a bearer token.
+// Uploaded result photos used to live on disk; Vercel functions have a
+// read-only filesystem, so the bytes now go into the database (see
+// db.createRecord) and are served back by GET /api/uploads/:id. The local
+// folder is still created (and served by express.static) for dev.
 const uploadsDir = path.join(__dirname, "uploads");
-fs.mkdirSync(uploadsDir, { recursive: true });
+try {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+} catch {
+  /* serverless: nothing writable here, storage lives in the database */
+}
 
 const IMAGE_DATA_URL = /^data:image\/(png|jpe?g|webp);base64,(.+)$/;
 
-function saveUploadedImage(dataUrl) {
+// Validates a photo data-URL before it is stored (type, emptiness, size).
+function validateImage(dataUrl) {
   const m = IMAGE_DATA_URL.exec(dataUrl);
-  if (!m) return { error: "Upload a PNG, JPG or WEBP image." };
+  if (!m) return "Upload a PNG, JPG or WEBP image.";
   const buf = Buffer.from(m[2], "base64");
-  if (buf.length === 0) return { error: "The uploaded image is empty." };
-  if (buf.length > 8 * 1024 * 1024) return { error: "The image is too large (max 8 MB)." };
-  const ext = m[1] === "jpeg" || m[1] === "jpg" ? "jpg" : m[1];
-  const name = `upl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-  fs.writeFileSync(path.join(uploadsDir, name), buf);
-  return { imageUrl: `/uploads/${name}` };
+  if (buf.length === 0) return "The uploaded image is empty.";
+  if (buf.length > 8 * 1024 * 1024) return "The image is too large (max 8 MB).";
+  return null;
 }
 
 // Mirrors the original: field-level completeness checks, in a fixed order.
@@ -255,10 +259,10 @@ app.post("/api/records", wrap(async (req, res) => {
     if (!String(body.examNumber ?? "").trim() || !String(body.exam ?? "").trim()) {
       return res.status(400).json({ error: "Exam number and examination are required." });
     }
-    const saved = saveUploadedImage(body.image);
-    if (saved.error) return res.status(400).json({ error: saved.error });
+    const invalid = validateImage(body.image);
+    if (invalid) return res.status(400).json({ error: invalid });
     const { image, ...rest } = body;
-    const record = await db.createRecord({ ...rest, imageUrl: saved.imageUrl });
+    const record = await db.createRecord({ ...rest, imageData: image });
     return res.status(201).json({ record });
   }
 
@@ -277,6 +281,18 @@ app.put("/api/records/:id", wrap(async (req, res) => {
   const record = await db.updateRecord(req.params.id, req.body || {});
   if (!record) return res.status(404).json({ error: "Record not found" });
   res.json({ record });
+}));
+
+// Stored result photos, served by id. Public on purpose: <img> tags cannot
+// send a bearer token. The bytes live in the records table (imageData) and
+// record.imageUrl points here, which keeps list responses small.
+app.get("/api/uploads/:id", wrap(async (req, res) => {
+  const dataUrl = await db.getRecordImage(req.params.id);
+  const m = dataUrl ? IMAGE_DATA_URL.exec(dataUrl) : null;
+  if (!m) return res.status(404).json({ error: "Image not found" });
+  res.set("Content-Type", `image/${m[1] === "jpg" ? "jpeg" : m[1]}`);
+  res.set("Cache-Control", "public, max-age=86400");
+  res.send(Buffer.from(m[2], "base64"));
 }));
 
 // --- KakaVerify.ng endpoints --------------------------------------------
@@ -433,6 +449,12 @@ app.get("*", (req, res, next) => {
   res.sendFile(path.join(dist, "index.html"), (err) => err && next());
 });
 
-app.listen(PORT, () => {
-  console.log(`Verify AI server listening on http://localhost:${PORT}`);
-});
+// On Vercel this module is imported by api/index.js, which exports the app
+// as the function handler; only listen when run as a local server.
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`Verify AI server listening on http://localhost:${PORT}`);
+  });
+}
+
+export default app;

@@ -72,19 +72,22 @@ export default function App() {
     <BrowserRouter>
       <Suspense fallback={<AuthFallback />}>
         <Routes>
-          {/* Signed-in visitors are bounced off the auth screens. */}
-          <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login onAuth={handleAuth} />} />
-          <Route path="/signup" element={user ? <Navigate to="/" replace /> : <Signup onAuth={handleAuth} />} />
+          {/* The main route is the sign-in page; after login everyone
+              lands on the dashboard at /dashboard. */}
+          <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <Login onAuth={handleAuth} />} />
+          {/* /login stays as an alias so old links keep working. */}
+          <Route path="/login" element={<Navigate to="/" replace />} />
+          <Route path="/signup" element={user ? <Navigate to="/dashboard" replace /> : <Signup onAuth={handleAuth} />} />
 
           {/* Everything else needs a session. */}
-          <Route element={user ? <Workspace user={user} onLogout={handleLogout} theme={theme} onToggleTheme={toggleTheme} /> : <Navigate to="/login" replace />}>
-            <Route path="/" element={<Dashboard />} />
+          <Route element={user ? <Workspace user={user} onLogout={handleLogout} theme={theme} onToggleTheme={toggleTheme} /> : <Navigate to="/" replace />}>
+            <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/new" element={<NewVerification />} />
             <Route path="/archive" element={<Archive />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/settings" element={<Settings />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
         </Routes>
       </Suspense>
