@@ -121,7 +121,12 @@ export const generateVerificationPdf = (record) => {
   };
 
   const sectionTitle = (text) => {
-    ensure(20);
+    // Text is drawn with its baseline at y, but glyphs and the accent bar
+    // extend *above* the baseline — right after a table, y sits on the last
+    // row's separator, so the heading would be printed on top of that row.
+    // Drop 8 mm of clearance first, then draw.
+    ensure(24);
+    y += 8;
     doc.setFillColor(green[0], green[1], green[2]);
     doc.rect(M, y - 4.5, 2.2, 6, "F");
     doc.setTextColor(dark[0], dark[1], dark[2]);
