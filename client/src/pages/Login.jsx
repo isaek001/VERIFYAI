@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { api, setSession } from "../api.js";
 import { Icon, icons } from "../components/Icon.jsx";
 import AuthShell from "../components/auth/AuthShell.jsx";
 import PasswordField from "../components/auth/PasswordField.jsx";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const DEMO = { email: "officer@nvri.gov.ng", password: "Passw0rd!" };
+// Demo credentials are a development convenience only: the block below is
+// compiled out of production builds, and the server refuses this login in
+// production unless ALLOW_DEMO_LOGIN=1 is set.
+const DEMO = import.meta.env.PROD ? null : { email: "officer@fcahpt.gov.ng", password: "Passw0rd!" };
 
 export default function Login({ onAuth }) {
   const [email, setEmail] = useState("");
@@ -14,10 +17,17 @@ export default function Login({ onAuth }) {
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState("");
   const [busy, setBusy] = useState(false);
+  const location = useLocation();
 
   useEffect(() => {
     document.title = "Sign in · Verify AI";
   }, []);
+
+  // ProtectedRoute bounces here with state.expired when the token died
+  // mid-session — say so instead of silently dropping the user.
+  useEffect(() => {
+    if (location.state?.expired) setFormError("Your session expired. Sign in again to continue.");
+  }, [location]);
 
   const validate = () => {
     const next = {};
@@ -46,6 +56,7 @@ export default function Login({ onAuth }) {
   };
 
   const useDemo = () => {
+    if (!DEMO) return;
     setEmail(DEMO.email);
     setPassword(DEMO.password);
     setErrors({});
@@ -55,7 +66,7 @@ export default function Login({ onAuth }) {
   return (
     <AuthShell
       title="Welcome back"
-      subtitle="Sign in with your NVRI staff account to continue."
+      subtitle="Sign in with your Federal College of Animal Health and Production Technology staff account to continue."
       footer={
         <>
           New to Verify AI?{" "}
@@ -82,7 +93,7 @@ export default function Login({ onAuth }) {
               type="email"
               autoComplete="email"
               inputMode="email"
-              placeholder="you@nvri.gov.ng"
+              placeholder="you@fcahpt.gov.ng"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               aria-invalid={errors.email ? "true" : undefined}
@@ -111,17 +122,19 @@ export default function Login({ onAuth }) {
         </button>
       </form>
 
-      <div className="auth-demo">
-        <div>
-          <strong>Demo account</strong>
-          <span>
-            {DEMO.email} · {DEMO.password}
-          </span>
+      {DEMO && (
+        <div className="auth-demo">
+          <div>
+            <strong>Demo account</strong>
+            <span>
+              {DEMO.email} · {DEMO.password}
+            </span>
+          </div>
+          <button type="button" className="btn ghost small" onClick={useDemo}>
+            Use demo login
+          </button>
         </div>
-        <button type="button" className="btn ghost small" onClick={useDemo}>
-          Use demo login
-        </button>
-      </div>
+      )}
     </AuthShell>
   );
 }

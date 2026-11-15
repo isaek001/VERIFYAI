@@ -20,7 +20,7 @@ const Spinner = () => (
   </div>
 );
 
-export function ProtectedRoute({ user, onAuth, onExpired, children }) {
+export function ProtectedRoute({ user, onAuth, onExpired, expired, children }) {
   const location = useLocation();
   // Verify once per sign-in (user.id is a stable string — verifying on the
   // user object's identity would re-run after every refresh of /me).
@@ -53,7 +53,7 @@ export function ProtectedRoute({ user, onAuth, onExpired, children }) {
 
   if (!user) {
     const from = `${location.pathname}${location.search}`;
-    return <Navigate to="/" replace state={{ from }} />;
+    return <Navigate to="/" replace state={{ from, expired: Boolean(expired) }} />;
   }
   if (checking) return <Spinner />;
   return children;

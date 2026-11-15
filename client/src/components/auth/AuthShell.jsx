@@ -1,7 +1,7 @@
 import { Icon, icons } from "../Icon.jsx";
 
 // Split layout for the sign-in / create-account screens:
-// a branded NVRI panel on the left, the form card on the right.
+// a branded college panel on the left, the form card on the right.
 export default function AuthShell({ title, subtitle, children, footer }) {
   return (
     <div className="auth-shell">
@@ -10,7 +10,9 @@ export default function AuthShell({ title, subtitle, children, footer }) {
           <div className="auth-logo">
             <img src="/logo/verifyai-wordmark.png" alt="" />
           </div>
-          <p className="auth-brand-tag">Results verification for the National Veterinary Research Institute, Vom.</p>
+          <p className="auth-brand-tag">
+            Results verification for the Federal College of Animal Health and Production Technology, Vom.
+          </p>
 
           <ul className="auth-points">
             <li>
@@ -24,7 +26,9 @@ export default function AuthShell({ title, subtitle, children, footer }) {
             </li>
           </ul>
 
-          <div className="auth-brand-foot">NVRI · Vom &nbsp;·&nbsp; Est. 1924</div>
+          <div className="auth-brand-foot">
+            Federal College of Animal Health and Production Technology &nbsp;·&nbsp; Est. 1924
+          </div>
         </div>
       </section>
 

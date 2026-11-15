@@ -5,7 +5,8 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 
-  /* NVRI palette — forest green and gold drawn from the NVRI Vom crest
+  /* College palette — forest green and gold drawn from the crest of the
+     Federal College of Animal Health and Production Technology, Vom
      (deep green field, gold centenary frame). Every text pair below is
      contrast-verified: body >= 4.5:1, large/UI >= 3:1. */
   --sidebar: #0a2c1f;
@@ -118,7 +119,7 @@ textarea {
   height: 100vh;
 }
 
-/* Signature element: the gold frame of the NVRI Vom crest, run across
+/* Signature element: the gold frame of the college crest, run across
    the top of the navigation rail. */
 .sidebar::before {
   content: "";
@@ -941,6 +942,13 @@ h1 {
   font-size: 12.5px;
   font-weight: 600;
   white-space: nowrap;
+}
+
+/* Long-form badges (the full college name) are allowed to wrap. */
+.badge.wrap {
+  white-space: normal;
+  line-height: 1.35;
+  text-align: center;
 }
 
 .badge-pending {

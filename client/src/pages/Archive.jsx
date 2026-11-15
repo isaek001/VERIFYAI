@@ -54,7 +54,7 @@ export default function Archive() {
       </div>
 
       {!serviceOk && (
-        <WarnBox wide>Showing demonstration records. The records service could not be reached.</WarnBox>
+        <WarnBox wide>Records could not be loaded. Check your connection and refresh to try again.</WarnBox>
       )}
 
       <div className="archive-toolbar">

@@ -58,7 +58,7 @@ export default function Signup({ onAuth }) {
   return (
     <AuthShell
       title="Create your account"
-      subtitle="Register with your NVRI staff email to start verifying results."
+      subtitle="Register with your Federal College of Animal Health and Production Technology staff email to start verifying results."
       footer={
         <>
           Already have an account?{" "}
@@ -107,7 +107,7 @@ export default function Signup({ onAuth }) {
               type="email"
               autoComplete="email"
               inputMode="email"
-              placeholder="you@nvri.gov.ng"
+              placeholder="you@fcahpt.gov.ng"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               aria-invalid={errors.email ? "true" : undefined}
@@ -138,7 +138,10 @@ export default function Signup({ onAuth }) {
         </button>
       </form>
 
-      <p className="auth-terms">By creating an account you agree to use Verify AI for authorised NVRI work only.</p>
+      <p className="auth-terms">
+        By creating an account you agree to use Verify AI for authorised work at the Federal College of Animal Health
+        and Production Technology only.
+      </p>
     </AuthShell>
   );
 }

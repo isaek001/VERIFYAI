@@ -1,6 +1,6 @@
 // Exam-verification API test — run: node test-verify.mjs
-// Needs the dev server running on :4000 (npm run dev).
-const BASE = "http://localhost:4000";
+// Needs a running server; point TEST_BASE at it (default :4000).
+const BASE = process.env.TEST_BASE || "http://localhost:4000";
 let pass = 0;
 let fail = 0;
 
@@ -40,7 +40,7 @@ const TINY_PNG =
 const login = async () => {
   const r = await call("/api/auth/login", {
     method: "POST",
-    body: { email: "officer@nvri.gov.ng", password: "Passw0rd!" },
+    body: { email: "officer@fcahpt.gov.ng", password: "Passw0rd!" },
   });
   return r.data?.token;
 };
@@ -125,10 +125,18 @@ console.log("\n4. NECO accepts its subtype, NABTEB reports unavailable");
   check("nabteb 200", nabteb.status === 200, String(nabteb.status));
   check("nabteb unavailable", nabteb.data?.comparison?.verdict === "unavailable", nabteb.data?.comparison?.verdict);
   check("nabteb pending", nabteb.data?.status === "Pending review", nabteb.data?.status);
-  check("nabteb mentions no API", /no public result API/i.test(nabteb.data?.official?.message || ""), nabteb.data?.official?.message);
+  // The exact wording depends on the network: an unreachable API says
+  // "no public result API", a reachable one says "no result found" —
+  // either way the official record is unavailable and must be explained.
+  check(
+    "nabteb explains the missing official record",
+    /no public result API|no result found/i.test(nabteb.data?.official?.message || ""),
+    nabteb.data?.official?.message
+  );
 }
 
 console.log("\n5. save record with the photo, then read it back");
+let createdId = null;
 {
   // Re-run a verification to get payloads to save.
   const v = await call("/api/verify", { method: "POST", token, body: VALID });
@@ -156,12 +164,14 @@ console.log("\n5. save record with the photo, then read it back");
   });
   check("201 created", save.status === 201, String(save.status));
   const rec = save.data?.record;
+  createdId = rec?.id || null;
   check("record id", Boolean(rec?.id));
-  check("imageUrl set", /^\/uploads\/upl-.+\.png$/.test(rec?.imageUrl || ""), rec?.imageUrl);
+  check("imageUrl points at the stored photo", /^\/api\/uploads\/rec-.+/.test(rec?.imageUrl || ""), rec?.imageUrl);
   check("verdict stored", rec?.verdict === d.comparison.verdict, rec?.verdict);
   check("examNumber stored", rec?.examNumber === VALID.examNumber, rec?.examNumber);
   check("comparison stored", Array.isArray(rec?.comparison?.subjects));
   check("status matches verdict mapping", rec?.status === (d.comparison.verdict === "mismatch" ? "Escalated" : "Pending review"), rec?.status);
+  check("photo bytes not echoed in the response", !("imageData" in rec), JSON.stringify(Object.keys(rec || {})));
 
   if (rec?.imageUrl) {
     const img = await fetch(`${BASE}${rec.imageUrl}`);
@@ -170,7 +180,9 @@ console.log("\n5. save record with the photo, then read it back");
   }
 
   const list = await call("/api/records", { token });
-  check("record appears in archive", (list.data?.records || list.data || []).some?.((r) => r.id === rec?.id));
+  const rows = list.data?.records || [];
+  check("record appears in archive", rows.some?.((r) => r.id === rec?.id));
+  check("list rows never include photo bytes", rows.every?.((r) => !("imageData" in r)));
 }
 
 console.log("\n6. verify meta stays public-ish and shaped");
@@ -178,6 +190,18 @@ console.log("\n6. verify meta stays public-ish and shaped");
   const r = await call("/api/verify/meta", { token });
   check("200", r.status === 200, String(r.status));
   check("boards listed", Array.isArray(r.data?.boards) && r.data.boards.includes("waec"), JSON.stringify(r.data));
+}
+
+console.log("\n7. cleanup — remove the record this run created");
+{
+  if (createdId) {
+    const d = await call(`/api/records/${createdId}`, { method: "DELETE", token });
+    check("created record deleted", d.status === 200, String(d.status));
+    const list = await call("/api/records", { token });
+    check("gone from the archive", !(list.data?.records || []).some((r) => r.id === createdId));
+  } else {
+    console.log("  skip  no record was created");
+  }
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

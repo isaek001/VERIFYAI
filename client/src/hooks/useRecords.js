@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api.js";
-import { DEMO_RECORDS } from "../lib/demoRecords.js";
 
 // Loads records once, exposes refresh + review updates.
-// Falls back to demonstration records if the API is unreachable.
+// If the API is unreachable it flags the service as down and keeps
+// whatever it already loaded — it never swaps real data for demo records.
 export function useRecords() {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -17,7 +17,6 @@ export function useRecords() {
       setServiceOk(true);
     } catch {
       setServiceOk(false);
-      setRecords((prev) => (prev.length ? prev : DEMO_RECORDS));
     } finally {
       setLoading(false);
     }

@@ -57,7 +57,7 @@ export default function Profile() {
             <p className="muted">{user?.email}</p>
             <div className="profile-tags">
               <span className="badge badge-verified">Verification officer</span>
-              <span className="badge badge-blue">NVRI · Vom</span>
+              <span className="badge badge-blue wrap">Federal College of Animal Health and Production Technology</span>
             </div>
           </div>
         </div>
@@ -80,7 +80,11 @@ export default function Profile() {
               value={formatDate(user?.createdAt)}
               badge={user?.createdAt ? "Active" : null}
             />
-            <DetailRow icon={icons.shield} label="Workspace" value="National Veterinary Research Institute, Vom" />
+            <DetailRow
+              icon={icons.shield}
+              label="Workspace"
+              value="Federal College of Animal Health and Production Technology, Vom"
+            />
             <DetailRow icon={icons.key} label="Account ID" value={user?.id || "—"} />
           </div>
         </div>
@@ -94,8 +98,9 @@ export default function Profile() {
       </div>
 
       <Notice title="Access is controlled">
-        This account is for authorised NVRI personnel. Review decisions you record are attributed to your name and
-        email. Sign out when you finish, especially on a shared workstation.
+        This account is for authorised personnel of the Federal College of Animal Health and Production Technology.
+        Review decisions you record are attributed to your name and email. Sign out when you finish, especially on a
+        shared workstation.
       </Notice>
     </>
   );

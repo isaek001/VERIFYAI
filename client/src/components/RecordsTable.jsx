@@ -89,7 +89,9 @@ export default function RecordsTable({ records, onOpen, emptyHint = true }) {
                 onClick={(e) => {
                   e.stopPropagation();
                   setGenerating(r.id);
-                  downloadPdf(r).then(() => setGenerating(null));
+                  downloadPdf(r)
+                    .catch(() => {})
+                    .finally(() => setGenerating(null));
                 }}
                 disabled={busy}
                 aria-label={`Download verification PDF for ${r.candidateId}`}

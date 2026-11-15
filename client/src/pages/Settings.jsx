@@ -42,7 +42,7 @@ export default function Settings() {
         <div>
           <div className="eyebrow">CONFIGURATION</div>
           <h1>Workspace settings</h1>
-          <p className="lede">Demonstration settings and operating principles.</p>
+          <p className="lede">Workspace configuration and operating principles.</p>
         </div>
       </div>
 
@@ -62,9 +62,9 @@ export default function Settings() {
         </div>
       </div>
 
-      <Notice title="Prototype notice">
-        This build is a functional prototype. Do not enter real or sensitive candidate results until institutional
-        approval, authentication, permissions, security controls and retention policies are implemented and validated.
+      <Notice title="Before entering real candidate data">
+        Confirm institutional approval, authentication, permissions, security controls and retention policies before
+        entering real or sensitive candidate results.
       </Notice>
     </>
   );

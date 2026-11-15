@@ -9,7 +9,10 @@
     "server": "npm run dev --prefix server",
     "client": "npm run dev --prefix client",
     "build": "npm run build --prefix client",
-    "start": "npm run start --prefix server"
+    "start": "npm run start --prefix server",
+    "test": "npm run test:unit && npm run test:api",
+    "test:unit": "node server/test-compare.mjs && node server/test-ocr.mjs",
+    "test:api": "node server/test-auth.mjs && node server/test-verify.mjs && node server/test-hardening.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

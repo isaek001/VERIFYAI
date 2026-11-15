@@ -12,9 +12,56 @@ import kakaverify from "./providers/kakaverify.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 4000;
+const isProduction = Boolean(process.env.VERCEL || process.env.NODE_ENV === "production");
 
-app.use(cors());
-app.use(express.json({ limit: "12mb" }));
+// Vercel sits in front of the function: trust the first proxy hop so
+// req.ip (used by the throttles below) is the real client, not the proxy.
+app.set("trust proxy", 1);
+
+// CORS is only needed in dev, where Vite serves the client from another
+// origin (:5173/:5174). In production the client and API share an origin,
+// so the allowlist stays empty unless CORS_ORIGIN lists extra origins.
+const DEV_ORIGINS = new Set([
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:5174",
+]);
+const EXTRA_ORIGINS = new Set(
+  String(process.env.CORS_ORIGIN || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+);
+
+app.use(
+  cors({
+    origin(origin, cb) {
+      // No Origin header = same-origin navigation or curl -> allowed.
+      if (!origin) return cb(null, true);
+      cb(null, DEV_ORIGINS.has(origin) || EXTRA_ORIGINS.has(origin));
+    },
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    maxAge: 600,
+  })
+);
+
+// Baseline security headers. A full Content-Security-Policy still needs a
+// decision on the inline theme script + Google Fonts (see README).
+app.use((_req, res, next) => {
+  res.set("X-Content-Type-Options", "nosniff");
+  res.set("X-Frame-Options", "DENY");
+  res.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  res.set("Cross-Origin-Opener-Policy", "same-origin");
+  if (isProduction) res.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  next();
+});
+
+// Vercel rejects request bodies over 4.5 MB at the platform, so the JSON
+// limit stays under that: a bigger photo would 413 before reaching us.
+app.use(express.json({ limit: "4mb" }));
 
 // Uploaded result photos used to live on disk; Vercel functions have a
 // read-only filesystem, so the bytes now go into the database (see
@@ -35,7 +82,7 @@ function validateImage(dataUrl) {
   if (!m) return "Upload a PNG, JPG or WEBP image.";
   const buf = Buffer.from(m[2], "base64");
   if (buf.length === 0) return "The uploaded image is empty.";
-  if (buf.length > 8 * 1024 * 1024) return "The image is too large (max 8 MB).";
+  if (buf.length > 4 * 1024 * 1024) return "The image is too large (max 4 MB).";
   return null;
 }
 
@@ -55,9 +102,22 @@ function runChecks({ candidateId, candidateName, exam, result }) {
   return findings;
 }
 
-app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, service: "verify-ai" });
-});
+// Wraps an async handler so a rejected query becomes a normal Express
+// error instead of a hung request.
+const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
+// Liveness probe: stays up even when the database is down (the ping has a
+// 3s ceiling), so callers can tell "process dead" from "DB unreachable".
+app.get(
+  "/api/health",
+  wrap(async (_req, res) => {
+    const up = await Promise.race([
+      db.ping(),
+      new Promise((resolve) => setTimeout(() => resolve(false), 3000)),
+    ]);
+    res.json({ ok: true, service: "verify-ai", db: up ? "up" : "down" });
+  })
+);
 
 // --- Auth -------------------------------------------------------------
 // Sessions are bearer tokens held in the client's localStorage and the
@@ -67,10 +127,6 @@ function tokenFrom(req) {
   const header = req.headers.authorization || "";
   return header.startsWith("Bearer ") ? header.slice(7) : null;
 }
-
-// Wraps an async handler so a rejected query becomes a normal Express
-// error instead of a hung request.
-const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 const requireAuth = wrap(async (req, res, next) => {
   const user = await db.getSessionUser(tokenFrom(req));
@@ -85,6 +141,33 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const loginFails = new Map(); // email -> { count, firstAt }
 const LOCK_WINDOW_MS = 15 * 60 * 1000;
 const MAX_FAILS = 10;
+
+// Generic fixed-window throttle keyed by anything (IP, user id...). The
+// map is per-process, so on Vercel it is a per-instance best effort —
+// proper distributed limits need a shared store (see README).
+const rateHits = new Map(); // key -> { count, firstAt }
+function rateLimited(key, max, windowMs) {
+  const now = Date.now();
+  const entry = rateHits.get(key);
+  if (!entry || now - entry.firstAt > windowMs) {
+    rateHits.set(key, { count: 1, firstAt: now });
+    return false;
+  }
+  entry.count += 1;
+  if (rateHits.size > 5000) rateHits.clear(); // bound memory
+  return entry.count > max;
+}
+
+// Optional sign-up domain allowlist: ALLOWED_EMAIL_DOMAINS=fcahpt.gov.ng,...
+const ALLOWED_EMAIL_DOMAINS = String(process.env.ALLOWED_EMAIL_DOMAINS || "")
+  .split(",")
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
+
+// The seeded demo account never signs in on a production deployment unless
+// ALLOW_DEMO_LOGIN=1 re-enables it explicitly.
+const DEMO_EMAILS = new Set(["officer@fcahpt.gov.ng", "officer@nvri.gov.ng"]);
+const demoLoginAllowed = !isProduction || process.env.ALLOW_DEMO_LOGIN === "1";
 
 function loginLocked(email) {
   const entry = loginFails.get(email);
@@ -110,7 +193,14 @@ app.post("/api/auth/signup", wrap(async (req, res) => {
 
   if (!name) return res.status(400).json({ error: "Enter your full name." });
   if (!EMAIL_RE.test(email)) return res.status(400).json({ error: "Enter a valid email address." });
+  if (ALLOWED_EMAIL_DOMAINS.length && !ALLOWED_EMAIL_DOMAINS.includes(email.split("@")[1] || "")) {
+    return res.status(403).json({ error: "Sign-up is restricted to approved email domains." });
+  }
   if (password.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters." });
+  // Throttle after validation so garbage bodies never consume the budget.
+  if (rateLimited(`signup:${req.ip || "unknown"}`, 10, 60 * 60 * 1000)) {
+    return res.status(429).json({ error: "Too many sign-up attempts from this network. Try again later." });
+  }
   if (await db.findUserByEmail(email)) {
     return res.status(409).json({ error: "An account with that email already exists." });
   }
@@ -130,6 +220,10 @@ app.post("/api/auth/login", wrap(async (req, res) => {
   }
   if (loginLocked(email)) {
     return res.status(429).json({ error: "Too many attempts. Try again in 15 minutes." });
+  }
+  if (!demoLoginAllowed && DEMO_EMAILS.has(email)) {
+    // Same generic error as a wrong password — no account enumeration.
+    return res.status(401).json({ error: "Email or password is incorrect." });
   }
 
   const user = await db.findUserByEmail(email);
@@ -155,6 +249,8 @@ app.get("/api/auth/me", requireAuth, (req, res) => {
 app.use("/api/analyze", requireAuth);
 app.use("/api/records", requireAuth);
 app.use("/api/verify", requireAuth);
+// KakaVerify wallet + purchase endpoints spend real money — never public.
+app.use("/api/kakaverify", requireAuth);
 
 // --- Exam verification (New verification page) --------------------------
 // Pure compute: fetches the official record, reads the uploaded photo with
@@ -198,6 +294,11 @@ app.post("/api/verify", async (req, res) => {
     const mimeMatch = IMAGE_DATA_URL.exec(image);
     if (!mimeMatch) errors.push("Upload a photo of the physical result (PNG, JPG or WEBP).");
     if (errors.length) return res.status(400).json({ error: errors[0], errors });
+
+    // Verifications burn provider/quota budget — cap each officer at 30/min.
+    if (rateLimited(`verify:${req.user?.id || req.ip}`, 30, 60 * 1000)) {
+      return res.status(429).json({ error: "Too many verification requests. Wait a minute and try again." });
+    }
 
     const mimeType = `image/${mimeMatch[1] === "jpg" ? "jpeg" : mimeMatch[1]}`;
 
@@ -247,12 +348,22 @@ app.post("/api/analyze", (req, res) => {
   });
 });
 
-app.get("/api/records", wrap(async (_req, res) => {
-  res.json({ records: await db.listRecords() });
+// The only statuses the review flow can produce (kept in sync with the
+// client's status badges) — anything else is rejected before storage.
+const RECORD_STATUSES = new Set(["Pending review", "Verified", "Escalated"]);
+
+app.get("/api/records", wrap(async (req, res) => {
+  // Server-side cap keeps list responses well under Vercel's 4.5 MB
+  // response limit; pass ?limit= to pull more.
+  const limit = Math.min(5000, Math.max(1, Number(req.query.limit) || 1000));
+  res.json({ records: await db.listRecords(limit) });
 }));
 
 app.post("/api/records", wrap(async (req, res) => {
   const body = req.body || {};
+  if (body.status !== undefined && !RECORD_STATUSES.has(String(body.status))) {
+    return res.status(400).json({ error: "Unknown record status." });
+  }
 
   // Verification record: photo + official/extracted/comparison payloads.
   if (typeof body.image === "string" && body.image.startsWith("data:image/")) {
@@ -278,9 +389,22 @@ app.post("/api/records", wrap(async (req, res) => {
 }));
 
 app.put("/api/records/:id", wrap(async (req, res) => {
-  const record = await db.updateRecord(req.params.id, req.body || {});
+  const patch = { ...(req.body || {}) };
+  if (patch.status !== undefined && !RECORD_STATUSES.has(String(patch.status))) {
+    return res.status(400).json({ error: "Unknown record status." });
+  }
+  // A review decision is always attributed to the officer who holds the
+  // token — never to a name supplied by the client.
+  if (patch.status !== undefined) patch.reviewedBy = req.user.name;
+  const record = await db.updateRecord(req.params.id, patch);
   if (!record) return res.status(404).json({ error: "Record not found" });
   res.json({ record });
+}));
+
+app.delete("/api/records/:id", wrap(async (req, res) => {
+  const removed = await db.deleteRecord(req.params.id);
+  if (!removed) return res.status(404).json({ error: "Record not found" });
+  res.json({ ok: true });
 }));
 
 // Stored result photos, served by id. Public on purpose: <img> tags cannot
@@ -448,6 +572,30 @@ app.get("*", (req, res, next) => {
   if (req.path.startsWith("/api/")) return next();
   res.sendFile(path.join(dist, "index.html"), (err) => err && next());
 });
+
+// Unknown API paths answer with JSON, not the SPA's HTML.
+app.use("/api", (req, res) => {
+  res.status(404).json({ error: `Unknown endpoint: ${req.method} ${req.path}` });
+});
+
+// Central error handler: anything a route's own try/catch missed (body
+// parser errors, unexpected throws, rejected queries) becomes clean JSON
+// instead of Express' default HTML error page.
+app.use((err, req, res, _next) => {
+  const status = err.status || err.statusCode || 500;
+  console.error(`[${new Date().toISOString()}] ${req.method} ${req.path} ->`, err.message);
+  if (res.headersSent) return;
+  if (status === 413) return res.status(413).json({ error: "The request body is too large (max 4 MB)." });
+  res
+    .status(status)
+    .json({ error: status >= 500 ? "Something went wrong on the server. Try again." : err.message });
+});
+
+// Background promise failures are logged, never silently swallowed (and
+// never allowed to kill the process — on Vercel that would take every
+// concurrent request down with it).
+process.on("unhandledRejection", (reason) => console.error("unhandledRejection:", reason));
+process.on("uncaughtException", (err) => console.error("uncaughtException:", err));
 
 // On Vercel this module is imported by api/index.js, which exports the app
 // as the function handler; only listen when run as a local server.

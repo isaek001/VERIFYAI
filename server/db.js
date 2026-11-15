@@ -5,8 +5,8 @@
 // are async now, so call sites in index.js await them.
 //
 // Credentials live in server/.env as DATABASE_URL (gitignored). On boot
-// the three tables are created if missing and the demo account is seeded,
-// so a fresh Supabase project needs no manual SQL.
+// the three tables are created if missing (and, outside production, the
+// demo account is seeded), so a fresh Supabase project needs no manual SQL.
 import "./config.js"; // loads server/.env before DATABASE_URL is read
 import { randomBytes } from "node:crypto";
 import pg from "pg";
@@ -17,7 +17,8 @@ if (!DATABASE_URL) {
   console.error("DATABASE_URL is missing from server/.env.");
   console.error("Add your Supabase Postgres connection string:");
   console.error("DATABASE_URL=postgresql://postgres:...@db.<ref>.supabase.co:5432/postgres");
-  process.exit(1);
+  console.error("The server keeps booting; data routes return 500 until it is set.");
+  console.error("(No process.exit here: on Vercel that would kill every invocation, even /api/health.)");
 }
 
 const { Pool } = pg;
@@ -25,14 +26,21 @@ const { Pool } = pg;
 // Supabase terminates TLS with a certificate Node does not chain-trust by
 // default, so encrypt without verifying the chain (Supabase's standard
 // recipe for direct connections). Strip sslmode so the explicit option wins.
-const url = new URL(DATABASE_URL);
-url.searchParams.delete("sslmode");
+let url = null;
+try {
+  url = DATABASE_URL ? new URL(DATABASE_URL) : null;
+} catch {
+  console.error("DATABASE_URL is not a valid URL — data routes will fail until it is fixed.");
+}
+if (url) url.searchParams.delete("sslmode");
 
-const pool = new Pool({
-  connectionString: url.toString(),
-  ssl: { rejectUnauthorized: false },
-  max: 10,
-});
+const pool = url
+  ? new Pool({
+      connectionString: url.toString(),
+      ssl: { rejectUnauthorized: false },
+      max: 10,
+    })
+  : new Pool({ max: 5 }); // no URL: per-query errors instead of a dead process
 pool.on("error", (err) => console.error("Postgres pool error:", err.message));
 
 // --- Schema (idempotent — safe on every boot) ----------------------------
@@ -76,6 +84,12 @@ create table if not exists public.sessions (
   "createdAt" timestamptz not null default now()
 );
 
+-- Session expiry (added later; idempotent for existing installs). Rows
+-- created before the column existed get one full window from first boot —
+-- after that createSession always stamps its own expiry.
+alter table public.sessions add column if not exists "expiresAt" timestamptz;
+update public.sessions set "expiresAt" = now() + interval '7 days' where "expiresAt" is null;
+
 create index if not exists records_created_at_idx on public.records ("createdAt" desc);
 
 -- Photo bytes column for databases created before image storage moved
@@ -111,16 +125,34 @@ end $$;
 // JSON columns (findings/official/extracted/comparison) round-trip through
 // pg as plain JS values.
 
-async function listRecords() {
+async function listRecords(limit = 1000) {
   // Everything except imageData: photo bytes would balloon list responses
   // (Vercel caps them at 4.5 MB) — the client loads them via imageUrl.
+  // The LIMIT keeps that cap safe as the table grows.
+  const n = Number(limit) > 0 ? Math.floor(Number(limit)) : 1000;
   const { rows } = await pool.query(
     `select id, "candidateId", "candidateName", exam, result, findings, "sourceText",
             status, "examType", "examNumber", "examYear", "examSubType", "imageUrl",
             official, extracted, comparison, verdict, "createdAt", "reviewedBy", "reviewNote"
-     from public.records order by "createdAt" desc`
+     from public.records order by "createdAt" desc limit $1`,
+    [n]
   );
   return rows;
+}
+
+async function deleteRecord(id) {
+  const { rows } = await pool.query('delete from public.records where id = $1 returning id', [id]);
+  return rows.length > 0;
+}
+
+// Cheap reachability probe for /api/health.
+async function ping() {
+  try {
+    await pool.query("select 1");
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function getRecordImage(id) {
@@ -261,10 +293,17 @@ function verifyUserPassword(user, password) {
   return verifyPassword(password, user.salt, user.hash);
 }
 
+const SESSION_TTL_DAYS = 7;
+
 async function createSession(userId) {
   const token = randomBytes(32).toString("hex");
+  // Opportunistic cleanup so expired sessions do not accumulate.
   await pool.query(
-    'insert into public.sessions (token, "userId") values ($1, $2)',
+    'delete from public.sessions where "expiresAt" is not null and "expiresAt" <= now()'
+  );
+  await pool.query(
+    `insert into public.sessions (token, "userId", "expiresAt")
+     values ($1, $2, now() + interval '${SESSION_TTL_DAYS} days')`,
     [token, userId]
   );
   return token;
@@ -275,7 +314,8 @@ async function getSessionUser(token) {
   const { rows } = await pool.query(
     `select u.* from public.sessions s
      join public.users u on u.id = s."userId"
-     where s.token = $1`,
+     where s.token = $1
+       and (s."expiresAt" is null or s."expiresAt" > now())`,
     [token]
   );
   return publicUser(rows[0] || null);
@@ -285,30 +325,50 @@ async function deleteSession(token) {
   if (token) await pool.query("delete from public.sessions where token = $1", [token]);
 }
 
-// Demo account so the app is usable immediately after sign-up pages land.
+// Demo account so a fresh checkout is usable immediately. A development
+// convenience only: production only seeds it when ALLOW_DEMO_LOGIN=1, and
+// index.js refuses the demo login on production deployments otherwise.
+const DEMO_EMAIL = "officer@fcahpt.gov.ng";
+const LEGACY_DEMO_EMAIL = "officer@nvri.gov.ng"; // pre-rename row
+
 async function seedDemoAccount() {
-  if (await findUserByEmail("officer@nvri.gov.ng")) return;
+  if (await findUserByEmail(DEMO_EMAIL)) return;
+  const legacy = await findUserByEmail(LEGACY_DEMO_EMAIL);
+  if (legacy) {
+    // Rename in place — keeps the account (and its sessions) intact.
+    await pool.query("update public.users set email = $1 where id = $2", [DEMO_EMAIL, legacy.id]);
+    return;
+  }
   await createUser({
     name: "Verification Officer",
-    email: "officer@nvri.gov.ng",
+    email: DEMO_EMAIL,
     password: "Passw0rd!",
   });
 }
 
-// Boot: create schema + seed, then fail fast with a clear message if the
-// database is unreachable (the server would be unusable anyway).
+// Boot: create schema + seed. Failures are logged, never fatal — a
+// process.exit here would kill every Vercel invocation (even /api/health)
+// and a transient Supabase hiccup should not brick the whole app.
 try {
   await pool.query(SCHEMA);
-  await seedDemoAccount();
 } catch (e) {
   console.error("Could not initialise the Supabase database:", e.message);
-  process.exit(1);
+}
+const isProduction = Boolean(process.env.VERCEL || process.env.NODE_ENV === "production");
+if (!isProduction || process.env.ALLOW_DEMO_LOGIN === "1") {
+  try {
+    await seedDemoAccount();
+  } catch (e) {
+    console.error("Demo account seed failed:", e.message);
+  }
 }
 
 export default {
   listRecords,
   getRecord,
   getRecordImage,
+  deleteRecord,
+  ping,
   createRecord,
   updateRecord,
   findUserByEmail,

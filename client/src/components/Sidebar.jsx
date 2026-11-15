@@ -57,7 +57,7 @@ export default function Sidebar({ open, onClose, user, onLogout }) {
             <div className="avatar">{initials(user?.name)}</div>
             <div className="side-user-meta">
               <strong>{user?.name || "Verification Officer"}</strong>
-              <span>NVRI · Vom</span>
+              <span>Federal College of Animal Health and Production Technology</span>
             </div>
           </NavLink>
           <button className="icon-btn ghost" onClick={onLogout} aria-label="Sign out">

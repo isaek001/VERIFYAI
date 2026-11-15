@@ -1,5 +1,6 @@
 // Auth API test — run: node test-auth.mjs
-const BASE = "http://localhost:4000";
+// Needs a running server; point TEST_BASE at it (default :4000).
+const BASE = process.env.TEST_BASE || "http://localhost:4000";
 let pass = 0;
 let fail = 0;
 
@@ -32,7 +33,7 @@ async function call(path, { method = "GET", token, body } = {}) {
 }
 
 const stamp = Date.now();
-const newUser = { name: "Test Officer", email: `test${stamp}@nvri.gov.ng`, password: "Secret123!" };
+const newUser = { name: "Test Officer", email: `test${stamp}@fcahpt.gov.ng`, password: "Secret123!" };
 
 console.log("\n1. health stays open");
 {
@@ -60,7 +61,7 @@ console.log("\n3. signup validation");
   check("missing name -> 400", r1.status === 400, `got ${r1.status}`);
   const r2 = await call("/api/auth/signup", { method: "POST", body: { name: "A B", email: "not-an-email", password: "longenough" } });
   check("bad email -> 400", r2.status === 400, `got ${r2.status}`);
-  const r3 = await call("/api/auth/signup", { method: "POST", body: { name: "A B", email: `x${stamp}@nvri.gov.ng`, password: "short" } });
+  const r3 = await call("/api/auth/signup", { method: "POST", body: { name: "A B", email: `x${stamp}@fcahpt.gov.ng`, password: "short" } });
   check("short password -> 400", r3.status === 400, `got ${r3.status}`);
 }
 
@@ -96,14 +97,14 @@ console.log("\n6. login flows");
 
 console.log("\n7. demo account works");
 {
-  const r = await call("/api/auth/login", { method: "POST", body: { email: "officer@nvri.gov.ng", password: "Passw0rd!" } });
+  const r = await call("/api/auth/login", { method: "POST", body: { email: "officer@fcahpt.gov.ng", password: "Passw0rd!" } });
   check("demo login 200", r.status === 200, `got ${r.status}`);
   check("demo user name", r.data?.user?.name === "Verification Officer");
 }
 
 console.log("\n8. protected routes accept a valid token");
 {
-  const a = await call("/api/analyze", { method: "POST", token, body: { candidateId: "NVRI/2026/T1", candidateName: "A B", exam: "PCR", result: "Negative" } });
+  const a = await call("/api/analyze", { method: "POST", token, body: { candidateId: "FCAHPT/2026/T1", candidateName: "A B", exam: "PCR", result: "Negative" } });
   check("analyze 200", a.status === 200 && Array.isArray(a.data?.findings), `got ${a.status}`);
   const g = await call("/api/records", { token });
   check("GET records 200", g.status === 200 && Array.isArray(g.data?.records), `got ${g.status}`);
@@ -112,6 +113,14 @@ console.log("\n8. protected routes accept a valid token");
   const recId = p.data?.record?.id;
   const u = await call(`/api/records/${recId}`, { method: "PUT", token, body: { status: "Verified", reviewedBy: "Test Officer" } });
   check("PUT record 200 + patch applied", u.status === 200 && u.data?.record?.status === "Verified", `got ${u.status}`);
+  check("reviewer attributed to the token's user", u.data?.record?.reviewedBy === "Test Officer", u.data?.record?.reviewedBy);
+
+  // Invalid statuses are rejected, and the record this run created is
+  // removed again so repeated runs leave no residue behind.
+  const bad = await call(`/api/records/${recId}`, { method: "PUT", token, body: { status: "Totally Fake" } });
+  check("unknown status -> 400", bad.status === 400, `got ${bad.status}`);
+  const del = await call(`/api/records/${recId}`, { method: "DELETE", token });
+  check("DELETE record 200 (cleanup)", del.status === 200, `got ${del.status}`);
 }
 
 console.log("\n9. logout invalidates the token");

@@ -3,7 +3,7 @@ import { useOutletContext } from "react-router-dom";
 import { Icon, icons } from "../components/Icon.jsx";
 import StatCard from "../components/StatCard.jsx";
 import RecordsTable from "../components/RecordsTable.jsx";
-import { Notice } from "../components/Notice.jsx";
+import { Notice, WarnBox } from "../components/Notice.jsx";
 
 // Counts derived from the loaded records.
 export function useRecordStats(records) {
@@ -21,7 +21,7 @@ export function useRecordStats(records) {
 }
 
 export default function Dashboard() {
-  const { records, onNavigate, onOpen, onRefresh, busy } = useOutletContext();
+  const { records, loading, serviceOk, onNavigate, onOpen, onRefresh, busy } = useOutletContext();
   const stats = useRecordStats(records);
 
   return (
@@ -52,6 +52,10 @@ export default function Dashboard() {
         <StatCard icon={icons.alert} tone="red" label="Flagged / escalated" value={stats.flagged} note="Require attention" />
       </div>
 
+      {!serviceOk && (
+        <WarnBox>Records could not be loaded. Check your connection and refresh to try again.</WarnBox>
+      )}
+
       <div className="section-head">
         <div>
           <h2>Recent verification activity</h2>
@@ -63,7 +67,14 @@ export default function Dashboard() {
       </div>
 
       <div className="panel">
-        <RecordsTable records={records.slice(0, 5)} onOpen={onOpen} />
+        {loading ? (
+          <div className="empty-state" role="status">
+            <div className="empty-icon spin" />
+            <strong>Loading records...</strong>
+          </div>
+        ) : (
+          <RecordsTable records={records.slice(0, 5)} onOpen={onOpen} />
+        )}
       </div>
 
       <Notice title="Human approval remains essential">

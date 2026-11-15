@@ -12,6 +12,10 @@
     <link rel="icon" type="image/png" href="/icons/favicon.png" />
     <link rel="alternate icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Verify AI" />
     <script>
       // Apply the saved light/dark theme before first paint so the
       // page never flashes the wrong palette (mirrors lib/theme.js).
@@ -34,6 +38,12 @@
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <div style="font-family: system-ui, sans-serif; padding: 48px 24px; text-align: center">
+        <strong>JavaScript is required</strong>
+        <p>Enable JavaScript in your browser to use Verify AI.</p>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

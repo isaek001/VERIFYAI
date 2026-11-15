@@ -4,6 +4,7 @@ import Sidebar from "./components/Sidebar.jsx";
 import Topbar from "./components/Topbar.jsx";
 import Toast from "./components/Toast.jsx";
 import RecordModal from "./components/RecordModal.jsx";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { useToast } from "./hooks/useToast.js";
 import { useRecords } from "./hooks/useRecords.js";
 import { api, getSession, setSession, setUnauthorizedHandler } from "./api.js";
@@ -40,6 +41,11 @@ export default function App() {
   // API call, which drops us back to the sign-in screen.
   const [user, setUser] = useState(() => getSession()?.user || null);
 
+  // Set when the server rejects a previously valid session, so the
+  // sign-in page can explain the redirect instead of dropping the user
+  // silently mid-action.
+  const [sessionExpired, setSessionExpired] = useState(false);
+
   // Light/dark palette, persisted and mirrored onto <html data-theme>.
   // index.html applies the saved value before first paint.
   const [theme, setTheme] = useState(readTheme);
@@ -50,12 +56,14 @@ export default function App() {
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
+      setSessionExpired(true);
       setUser(null);
     });
     return () => setUnauthorizedHandler(null);
   }, []);
 
   const handleAuth = useCallback((session) => {
+    setSessionExpired(false);
     setUser(session.user);
   }, []);
 
@@ -63,6 +71,7 @@ export default function App() {
   // session so ProtectedRoute drops us back to the sign-in page.
   const handleSessionExpired = useCallback(() => {
     setSession(null);
+    setSessionExpired(true);
     setUser(null);
   }, []);
 
@@ -79,7 +88,8 @@ export default function App() {
   return (
     <BrowserRouter>
       <Suspense fallback={<AuthFallback />}>
-        <Routes>
+        <ErrorBoundary>
+          <Routes>
           {/* Sign-in / create-account: guests only. Anyone already signed
               in is forwarded to the page they originally asked for (or the
               dashboard) — ProtectedRoute passes that target as location state. */}
@@ -113,7 +123,7 @@ export default function App() {
               token against the server and redirects guests to sign-in. */}
           <Route
             element={
-              <ProtectedRoute user={user} onAuth={handleAuth} onExpired={handleSessionExpired}>
+              <ProtectedRoute user={user} onAuth={handleAuth} onExpired={handleSessionExpired} expired={sessionExpired}>
                 <Workspace user={user} onLogout={handleLogout} theme={theme} onToggleTheme={toggleTheme} />
               </ProtectedRoute>
             }
@@ -126,7 +136,8 @@ export default function App() {
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
-        </Routes>
+          </Routes>
+        </ErrorBoundary>
       </Suspense>
     </BrowserRouter>
   );

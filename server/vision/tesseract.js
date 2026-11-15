@@ -32,7 +32,14 @@ export default async function readWithTesseract({ dataUrl } = {}) {
   let text = "";
   try {
     const worker = await getWorker();
-    const { data } = await worker.recognize(`data:image/png;base64,${base64}`);
+    // OCR must not hang a request forever: Tesseract can stall on a bad
+    // image, and Vercel functions have a hard wall-clock limit.
+    const recognize = worker.recognize(`data:image/png;base64,${base64}`);
+    const timeout = new Promise((_, reject) => {
+      const t = setTimeout(() => reject(new Error("OCR timed out after 60s")), 60000);
+      if (t.unref) t.unref();
+    });
+    const { data } = await Promise.race([recognize, timeout]);
     text = data?.text || "";
   } catch (e) {
     return {

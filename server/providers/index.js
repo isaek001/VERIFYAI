@@ -54,7 +54,15 @@ export async function fetchOfficialResult({ examType, examNumber, examYear, exam
     return { ok: false, source: board || "unknown", reason: "unknown-board", message: "Unknown examination board." };
   }
 
-  const useFixture = config.provider === "fixture" || (config.provider !== "live" && !entry.configured());
+  // Production must never fabricate an "official" result: with no board key
+  // configured, `auto` falls through to the real provider, which reports a
+  // clear not-configured error instead. The fixture stays available locally
+  // (development needs no keys) and as an explicit RESULT_PROVIDER=fixture
+  // opt-in anywhere.
+  const isProduction = Boolean(process.env.VERCEL || process.env.NODE_ENV === "production");
+  const useFixture =
+    config.provider === "fixture" ||
+    (config.provider !== "live" && !entry.configured() && !isProduction);
   if (useFixture) return fetchFixture({ examType: board, examNumber, examYear });
 
   return entry.fetch({ examNumber, examYear, examSubType });
