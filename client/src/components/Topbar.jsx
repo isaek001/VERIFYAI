@@ -12,7 +12,7 @@ export default function Topbar({ page, theme, onToggleTheme, onOpenMenu, user })
           sidebar (and its brand block) is replaced by the bottom nav. */}
       <NavLink to="/dashboard" className="mobile-brand" aria-label="Verify AI dashboard">
         <span className="brand-mark mini">
-          <Icon d={icons.shield} size={15} strokeWidth={2} />
+          <img src="/logo/verifyai-icon.png" alt="" width="34" height="34" />
         </span>
       </NavLink>
       <nav className="crumbs" aria-label="Breadcrumb">

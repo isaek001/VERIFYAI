@@ -12,7 +12,7 @@ export default function Sidebar({ open, onClose, user, onLogout }) {
       <aside className={`sidebar ${open ? "open" : ""}`}>
         <div className="brand">
           <div className="brand-mark">
-            <Icon d={icons.shield} size={22} strokeWidth={2} />
+            <img src="/logo/verifyai-icon.png" alt="" width="46" height="46" />
           </div>
           <div className="brand-text">
             <div className="brand-name">

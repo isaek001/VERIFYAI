@@ -7,11 +7,8 @@ export default function AuthShell({ title, subtitle, children, footer }) {
     <div className="auth-shell">
       <section className="auth-brand" aria-hidden="true">
         <div className="auth-brand-inner">
-          <div className="brand-mark lg">
-            <Icon d={icons.shield} size={30} strokeWidth={2} />
-          </div>
-          <div className="auth-brand-name">
-            VERIFY<span>AI</span>
+          <div className="auth-logo">
+            <img src="/logo/verifyai-wordmark.png" alt="" />
           </div>
           <p className="auth-brand-tag">Results verification for the National Veterinary Research Institute, Vom.</p>
 

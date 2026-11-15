@@ -153,12 +153,21 @@ textarea {
   width: 46px;
   height: 46px;
   border-radius: 13px;
-  background: linear-gradient(150deg, #1c8a4b, #0f5c2e);
-  color: #fff;
+  background: #fff;
   display: grid;
   place-items: center;
-  box-shadow: 0 6px 16px rgba(15, 92, 46, 0.45),
+  overflow: hidden;
+  flex: none;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28),
     inset 0 0 0 1.5px rgba(232, 200, 74, 0.65);
+}
+
+/* Provided VerifyAI logo sits on the white plate at every mark size. */
+.brand-mark img {
+  display: block;
+  width: 82%;
+  height: 82%;
+  object-fit: contain;
 }
 
 .brand-name {
@@ -2096,6 +2105,22 @@ h1 {
   height: 26px;
 }
 
+/* Full VerifyAI wordmark (icon + name + tagline) on a white plate —
+   the navy lettering needs a light backing against the dark panel. */
+.auth-logo {
+  background: #fff;
+  border-radius: 18px;
+  padding: 16px 22px;
+  display: inline-block;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+}
+
+.auth-logo img {
+  display: block;
+  width: min(360px, 100%);
+  height: auto;
+}
+
 .auth-brand-name {
   font-family: "Manrope", sans-serif;
   font-weight: 800;
@@ -2388,15 +2413,13 @@ h1 {
     flex-wrap: wrap;
   }
 
-  .brand-mark.lg {
-    width: 50px;
-    height: 50px;
+  .auth-logo {
+    padding: 11px 16px;
     border-radius: 14px;
   }
 
-  .auth-brand-name {
-    font-size: 30px;
-    margin-top: 0;
+  .auth-logo img {
+    width: min(250px, 56vw);
   }
 
   .auth-brand-tag,
@@ -2417,8 +2440,8 @@ h1 {
     padding: 24px 18px 26px;
   }
 
-  .auth-brand-name {
-    font-size: 25px;
+  .auth-logo img {
+    width: min(210px, 62vw);
   }
 
   .auth-panel {

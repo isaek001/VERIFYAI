@@ -7,6 +7,7 @@ import RecordModal from "./components/RecordModal.jsx";
 import { useToast } from "./hooks/useToast.js";
 import { useRecords } from "./hooks/useRecords.js";
 import { api, getSession, setSession, setUnauthorizedHandler } from "./api.js";
+import { ProtectedRoute, GuestOnlyRoute } from "./components/routes/ProtectedRoute.jsx";
 import { labelForPath } from "./lib/routes.js";
 import { readTheme, applyTheme } from "./lib/theme.js";
 import BottomNav from "./components/BottomNav.jsx";
@@ -58,6 +59,13 @@ export default function App() {
     setUser(session.user);
   }, []);
 
+  // The token was rejected server-side (expired / revoked): clear the local
+  // session so ProtectedRoute drops us back to the sign-in page.
+  const handleSessionExpired = useCallback(() => {
+    setSession(null);
+    setUser(null);
+  }, []);
+
   const handleLogout = useCallback(async () => {
     try {
       await api.logout(); // best effort — local session clears regardless
@@ -72,15 +80,44 @@ export default function App() {
     <BrowserRouter>
       <Suspense fallback={<AuthFallback />}>
         <Routes>
-          {/* The main route is the sign-in page; after login everyone
-              lands on the dashboard at /dashboard. */}
-          <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <Login onAuth={handleAuth} />} />
+          {/* Sign-in / create-account: guests only. Anyone already signed
+              in is forwarded to the page they originally asked for (or the
+              dashboard) — ProtectedRoute passes that target as location state. */}
+          <Route
+            path="/"
+            element={
+              <GuestOnlyRoute user={user}>
+                <Login onAuth={handleAuth} />
+              </GuestOnlyRoute>
+            }
+          />
           {/* /login stays as an alias so old links keep working. */}
-          <Route path="/login" element={<Navigate to="/" replace />} />
-          <Route path="/signup" element={user ? <Navigate to="/dashboard" replace /> : <Signup onAuth={handleAuth} />} />
+          <Route
+            path="/login"
+            element={
+              <GuestOnlyRoute user={user}>
+                <Login onAuth={handleAuth} />
+              </GuestOnlyRoute>
+            }
+          />
+          <Route
+            path="/signup"
+            element={
+              <GuestOnlyRoute user={user}>
+                <Signup onAuth={handleAuth} />
+              </GuestOnlyRoute>
+            }
+          />
 
-          {/* Everything else needs a session. */}
-          <Route element={user ? <Workspace user={user} onLogout={handleLogout} theme={theme} onToggleTheme={toggleTheme} /> : <Navigate to="/" replace />}>
+          {/* Everything else sits behind ProtectedRoute: it verifies the
+              token against the server and redirects guests to sign-in. */}
+          <Route
+            element={
+              <ProtectedRoute user={user} onAuth={handleAuth} onExpired={handleSessionExpired}>
+                <Workspace user={user} onLogout={handleLogout} theme={theme} onToggleTheme={toggleTheme} />
+              </ProtectedRoute>
+            }
+          >
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/new" element={<NewVerification />} />
             <Route path="/archive" element={<Archive />} />
