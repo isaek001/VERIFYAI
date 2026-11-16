@@ -2411,12 +2411,14 @@ h1 {
   .auth-brand {
     padding: 30px 26px 34px;
     align-items: flex-start;
+    justify-content: center; /* shrink-wrapped inner (the logo) sits centred */
   }
 
   .auth-brand-inner {
     max-width: none;
     display: flex;
     align-items: center;
+    justify-content: center; /* logo sits centred in the band on mobile */
     gap: 16px;
     flex-wrap: wrap;
   }

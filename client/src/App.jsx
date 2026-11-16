@@ -85,8 +85,10 @@ export default function App() {
     setUser(null);
   }, []);
 
+  // v7_* flags opt in to React Router v7 behaviour early, which clears the
+  // "React Router Future Flag Warning" notices in the console.
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Suspense fallback={<AuthFallback />}>
         <ErrorBoundary>
           <Routes>
