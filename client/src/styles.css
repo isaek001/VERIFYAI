@@ -2183,17 +2183,41 @@ h1 {
 
 /* Form half */
 .auth-panel {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 48px 32px;
 }
 
+/* Faded portrait of Professor Abdullahi Ahmed, Provost of the College,
+   washed across the form half as a watermark (official portrait via
+   ARCN / Tribune Online, July 2026). It shows in the margins around the
+   card and continues, much fainter, underneath it (see .auth-card). */
+.auth-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url("/provost.jpg") no-repeat center 20%;
+  background-size: cover;
+  opacity: 0.22;
+  filter: grayscale(25%);
+  pointer-events: none;
+}
+
 .auth-card {
   position: relative;
+  z-index: 1;
   width: 100%;
   max-width: 445px;
+  /* The same portrait ghosted under a veil of the card colour, so the
+     picture sits ON the form itself while text keeps ~4.6:1 contrast
+     (the veil hides 84% of it). The plain background first is the
+     fallback for browsers without color-mix(); they keep it opaque. */
   background: var(--card);
+  background:
+    linear-gradient(color-mix(in srgb, var(--card) 84%, transparent), color-mix(in srgb, var(--card) 84%, transparent)),
+    url("/provost.jpg") center 18% / cover no-repeat var(--card);
   border: 1px solid var(--line);
   border-radius: 18px;
   padding: 42px 40px;
@@ -3052,6 +3076,12 @@ h1 {
 [data-theme="dark"] .panel,
 [data-theme="dark"] .auth-card {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 16px 36px -24px rgba(0, 0, 0, 0.8);
+}
+
+/* The provost watermark reads a touch stronger against the dark panel. */
+[data-theme="dark"] .auth-panel::before {
+  opacity: 0.2;
+  filter: grayscale(35%);
 }
 
 [data-theme="dark"] .stat-card:hover {
