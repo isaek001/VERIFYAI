@@ -28,9 +28,9 @@ const ROLE_LABELS = {
   records: "Records officer",
 };
 
-// Officer profile: identity plus the one thing this role may edit —
-// the password. No stats, no settings (those belong to the admin).
-function OfficerProfile({ user, onLogout, onToast }) {
+// Reusable change-password form: any signed-in account may rotate its own
+// password. Officers see only this; admins get it alongside their profile.
+function PasswordChangeForm({ user, onToast }) {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -38,7 +38,6 @@ function OfficerProfile({ user, onLogout, onToast }) {
   const [formError, setFormError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const roleLabel = ROLE_LABELS[user?.role] || "Officer";
   const pwdOk = next.length >= 8;
 
   const submit = async (e) => {
@@ -67,6 +66,59 @@ function OfficerProfile({ user, onLogout, onToast }) {
       setBusy(false);
     }
   };
+
+  return (
+    <form className="pwd-form" onSubmit={submit} noValidate>
+      {formError && (
+        <div className="auth-err" role="alert">
+          <Icon d={icons.alert} size={16} />
+          {formError}
+        </div>
+      )}
+
+      <PasswordField
+        id="profile-current"
+        label="Current password"
+        autoComplete="current-password"
+        placeholder="Enter your current password"
+        value={current}
+        onChange={(e) => setCurrent(e.target.value)}
+        error={errors.current}
+      />
+
+      <PasswordField
+        id="profile-new"
+        label="New password"
+        autoComplete="new-password"
+        placeholder="At least 8 characters"
+        value={next}
+        onChange={(e) => setNext(e.target.value)}
+        error={errors.next}
+        hint={pwdOk ? "Good — your password meets the minimum length." : "Use at least 8 characters."}
+        hintOk={pwdOk}
+      />
+
+      <PasswordField
+        id="profile-confirm"
+        label="Confirm new password"
+        autoComplete="new-password"
+        placeholder="Re-enter the new password"
+        value={confirm}
+        onChange={(e) => setConfirm(e.target.value)}
+        error={errors.confirm}
+      />
+
+      <button className="btn primary pwd-submit" type="submit" disabled={busy}>
+        {busy ? "Saving..." : "Update password"}
+      </button>
+    </form>
+  );
+}
+
+// Officer profile: identity plus the one thing this role may edit —
+// the password. No stats, no settings (those belong to the admin).
+function OfficerProfile({ user, onLogout, onToast }) {
+  const roleLabel = ROLE_LABELS[user?.role] || "Officer";
 
   return (
     <>
@@ -104,51 +156,7 @@ function OfficerProfile({ user, onLogout, onToast }) {
             </div>
             <Icon d={icons.lock} size={22} className="panel-head-icon" />
           </div>
-
-          <form className="pwd-form" onSubmit={submit} noValidate>
-            {formError && (
-              <div className="auth-err" role="alert">
-                <Icon d={icons.alert} size={16} />
-                {formError}
-              </div>
-            )}
-
-            <PasswordField
-              id="profile-current"
-              label="Current password"
-              autoComplete="current-password"
-              placeholder="Enter your current password"
-              value={current}
-              onChange={(e) => setCurrent(e.target.value)}
-              error={errors.current}
-            />
-
-            <PasswordField
-              id="profile-new"
-              label="New password"
-              autoComplete="new-password"
-              placeholder="At least 8 characters"
-              value={next}
-              onChange={(e) => setNext(e.target.value)}
-              error={errors.next}
-              hint={pwdOk ? "Good — your password meets the minimum length." : "Use at least 8 characters."}
-              hintOk={pwdOk}
-            />
-
-            <PasswordField
-              id="profile-confirm"
-              label="Confirm new password"
-              autoComplete="new-password"
-              placeholder="Re-enter the new password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              error={errors.confirm}
-            />
-
-            <button className="btn primary pwd-submit" type="submit" disabled={busy}>
-              {busy ? "Saving..." : "Update password"}
-            </button>
-          </form>
+          <PasswordChangeForm user={user} onToast={onToast} />
         </div>
       </div>
 
@@ -161,7 +169,7 @@ function OfficerProfile({ user, onLogout, onToast }) {
 }
 
 export default function Profile() {
-  const { user, records, onLogout, onNavigate, onToast } = useOutletContext();
+  const { user, records, onLogout, onToast } = useOutletContext();
 
   // Officers (verifying / records) see identity + password only.
   if (user?.role && user.role !== "admin") {
@@ -186,9 +194,6 @@ export default function Profile() {
           <p className="lede">Identity and review activity for this Verify AI account.</p>
         </div>
         <div className="head-actions">
-          <button className="btn ghost" onClick={() => onNavigate("/settings")}>
-            <Icon d={icons.settings} size={15} /> Workspace settings
-          </button>
           <button className="btn danger" onClick={onLogout}>
             <Icon d={icons.logout} size={15} /> Sign out
           </button>
@@ -233,6 +238,17 @@ export default function Profile() {
             />
             <DetailRow icon={icons.key} label="Account ID" value={user?.id || "—"} />
           </div>
+        </div>
+
+        <div className="panel">
+          <div className="panel-head">
+            <div>
+              <h2>Change password</h2>
+              <p className="muted">Update the password for this account.</p>
+            </div>
+            <Icon d={icons.lock} size={22} className="panel-head-icon" />
+          </div>
+          <PasswordChangeForm user={user} onToast={onToast} />
         </div>
       </div>
 

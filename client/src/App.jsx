@@ -18,7 +18,6 @@ const Dashboard = lazy(() => import("./pages/Dashboard.jsx"));
 const NewVerification = lazy(() => import("./pages/NewVerification.jsx"));
 const Archive = lazy(() => import("./pages/Archive.jsx"));
 const Reports = lazy(() => import("./pages/Reports.jsx"));
-const Settings = lazy(() => import("./pages/Settings.jsx"));
 const Profile = lazy(() => import("./pages/Profile.jsx"));
 const Users = lazy(() => import("./pages/Users.jsx"));
 const Login = lazy(() => import("./pages/Login.jsx"));
@@ -139,7 +138,6 @@ export default function App() {
             <Route path="/reports" element={<RoleRoute path="/reports"><Reports /></RoleRoute>} />
             <Route path="/users" element={<RoleRoute path="/users"><Users /></RoleRoute>} />
             <Route path="/profile" element={<Profile />} />
-            <Route path="/settings" element={<RoleRoute path="/settings"><Settings /></RoleRoute>} />
             <Route path="*" element={<HomeRedirect />} />
           </Route>
           </Routes>

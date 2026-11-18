@@ -13,7 +13,6 @@ export const ROUTES = [
   { path: "/reports", label: "Reports", icon: icons.reports, short: "Reports", roles: ["admin", "records"] },
   { path: "/users", label: "User accounts", icon: icons.users, short: "Users", roles: ["admin"] },
   { path: "/profile", label: "Profile", icon: icons.user, short: "Profile" },
-  { path: "/settings", label: "Settings", icon: icons.settings, short: "Settings", roles: ["admin"] },
 ];
 
 // Sessions created before the role column existed carry no role; treat
