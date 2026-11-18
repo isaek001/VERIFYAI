@@ -17,7 +17,7 @@ const VERDICT_BADGE = {
   unavailable: "badge-blue",
 };
 
-export default function RecordModal({ record, onClose, onDecide, busy }) {
+export default function RecordModal({ record, onClose, onDecide, busy, readOnly = false }) {
   const [reviewer, setReviewer] = useState("Authorised Officer");
   const [note, setNote] = useState("");
 
@@ -25,7 +25,10 @@ export default function RecordModal({ record, onClose, onDecide, busy }) {
 
   // A human decision already exists (Verified or Escalated): the record is
   // decided, so the decision controls no longer apply — only Close remains.
+  // Records officers get the same read-only view: review decisions are an
+  // admin action, so the controls are never rendered for them.
   const decided = record.status === "Verified" || record.status === "Escalated";
+  const canDecide = !decided && !readOnly;
 
   const field = (label, value) => (
     <div className="result-field">
@@ -87,12 +90,7 @@ export default function RecordModal({ record, onClose, onDecide, busy }) {
           </div>
         )}
 
-        {decided ? (
-          <div className="review-box">
-            <span className="field-label">Audit note</span>
-            <p className="source-text">{record.reviewNote || "No audit note recorded."}</p>
-          </div>
-        ) : (
+        {canDecide ? (
           <div className="review-box">
             <label className="field">
               <span className="field-label">Reviewer name</span>
@@ -108,13 +106,20 @@ export default function RecordModal({ record, onClose, onDecide, busy }) {
               />
             </label>
           </div>
+        ) : (
+          decided && (
+            <div className="review-box">
+              <span className="field-label">Audit note</span>
+              <p className="source-text">{record.reviewNote || "No audit note recorded."}</p>
+            </div>
+          )
         )}
 
         <div className="modal-actions">
           <button className="btn ghost" onClick={onClose}>
             Close
           </button>
-          {!decided && (
+          {canDecide && (
             <>
               <button className="btn danger" disabled={busy} onClick={() => onDecide("Escalated", reviewer, note)}>
                 Escalate

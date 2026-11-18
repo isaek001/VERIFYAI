@@ -3,6 +3,7 @@ import { useOutletContext } from "react-router-dom";
 import { Icon, icons } from "../components/Icon.jsx";
 import RecordsTable from "../components/RecordsTable.jsx";
 import { WarnBox } from "../components/Notice.jsx";
+import { canAccess, routeFor } from "../lib/routes.js";
 
 const TABS = ["All records", "Pending review", "Verified", "Escalated"];
 
@@ -15,9 +16,12 @@ function toCsv(rows) {
 }
 
 export default function Archive() {
-  const { records, loading, onOpen, onNavigate, onToast, serviceOk } = useOutletContext();
+  const { records, loading, onOpen, onNavigate, onToast, serviceOk, user } = useOutletContext();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("All records");
+
+  // Only roles allowed to run a new verification get the shortcut button.
+  const canNew = canAccess(user, routeFor("/new"));
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -47,9 +51,11 @@ export default function Archive() {
           <p className="lede">Search and retrieve verification cases, subject to authorised access.</p>
         </div>
         <div className="head-actions">
-          <button className="btn primary" onClick={() => onNavigate("/new")}>
-            <Icon d={icons.plus} size={16} /> New verification
-          </button>
+          {canNew && (
+            <button className="btn primary" onClick={() => onNavigate("/new")}>
+              <Icon d={icons.plus} size={16} /> New verification
+            </button>
+          )}
         </div>
       </div>
 

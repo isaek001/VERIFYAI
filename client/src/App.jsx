@@ -9,7 +9,7 @@ import { useToast } from "./hooks/useToast.js";
 import { useRecords } from "./hooks/useRecords.js";
 import { api, getSession, setSession, setUnauthorizedHandler } from "./api.js";
 import { ProtectedRoute, GuestOnlyRoute, RoleRoute } from "./components/routes/ProtectedRoute.jsx";
-import { homeFor, labelForPath } from "./lib/routes.js";
+import { homeFor, labelForPath, roleOf } from "./lib/routes.js";
 import { readTheme, applyTheme } from "./lib/theme.js";
 import BottomNav from "./components/BottomNav.jsx";
 
@@ -222,7 +222,15 @@ function Workspace({ user, onLogout, theme, onToggleTheme }) {
         </main>
       </div>
 
-      {selected && <RecordModal record={selected} onClose={() => setSelected(null)} onDecide={decide} busy={busy} />}
+      {selected && (
+        <RecordModal
+          record={selected}
+          onClose={() => setSelected(null)}
+          onDecide={decide}
+          busy={busy}
+          readOnly={roleOf(user) !== "admin"}
+        />
+      )}
 
       <Toast message={toast} />
     </div>

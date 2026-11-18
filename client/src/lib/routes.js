@@ -9,7 +9,7 @@ import { icons } from "../components/Icon.jsx";
 export const ROUTES = [
   { path: "/dashboard", label: "Dashboard", icon: icons.dashboard, end: true, short: "Dashboard", roles: ["admin"] },
   { path: "/new", label: "New verification", icon: icons.file, trailing: true, short: "New", roles: ["admin", "verifying"] },
-  { path: "/archive", label: "Records archive", icon: icons.archive, short: "Archive", roles: ["admin"] },
+  { path: "/archive", label: "Records archive", icon: icons.archive, short: "Archive", roles: ["admin", "records"] },
   { path: "/reports", label: "Reports", icon: icons.reports, short: "Reports", roles: ["admin", "records"] },
   { path: "/users", label: "User accounts", icon: icons.users, short: "Users", roles: ["admin"] },
   { path: "/profile", label: "Profile", icon: icons.user, short: "Profile" },
