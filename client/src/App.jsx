@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
-import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import Sidebar from "./components/Sidebar.jsx";
 import Topbar from "./components/Topbar.jsx";
 import Toast from "./components/Toast.jsx";
@@ -8,8 +8,8 @@ import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { useToast } from "./hooks/useToast.js";
 import { useRecords } from "./hooks/useRecords.js";
 import { api, getSession, setSession, setUnauthorizedHandler } from "./api.js";
-import { ProtectedRoute, GuestOnlyRoute } from "./components/routes/ProtectedRoute.jsx";
-import { labelForPath } from "./lib/routes.js";
+import { ProtectedRoute, GuestOnlyRoute, RoleRoute } from "./components/routes/ProtectedRoute.jsx";
+import { homeFor, labelForPath } from "./lib/routes.js";
 import { readTheme, applyTheme } from "./lib/theme.js";
 import BottomNav from "./components/BottomNav.jsx";
 
@@ -20,6 +20,7 @@ const Archive = lazy(() => import("./pages/Archive.jsx"));
 const Reports = lazy(() => import("./pages/Reports.jsx"));
 const Settings = lazy(() => import("./pages/Settings.jsx"));
 const Profile = lazy(() => import("./pages/Profile.jsx"));
+const Users = lazy(() => import("./pages/Users.jsx"));
 const Login = lazy(() => import("./pages/Login.jsx"));
 const Signup = lazy(() => import("./pages/Signup.jsx"));
 
@@ -130,19 +131,29 @@ export default function App() {
               </ProtectedRoute>
             }
           >
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/new" element={<NewVerification />} />
-            <Route path="/archive" element={<Archive />} />
-            <Route path="/reports" element={<Reports />} />
+            {/* Each page names its own path: RoleRoute looks the roles up
+                in lib/routes.js, so access rules are declared once. */}
+            <Route path="/dashboard" element={<RoleRoute path="/dashboard"><Dashboard /></RoleRoute>} />
+            <Route path="/new" element={<RoleRoute path="/new"><NewVerification /></RoleRoute>} />
+            <Route path="/archive" element={<RoleRoute path="/archive"><Archive /></RoleRoute>} />
+            <Route path="/reports" element={<RoleRoute path="/reports"><Reports /></RoleRoute>} />
+            <Route path="/users" element={<RoleRoute path="/users"><Users /></RoleRoute>} />
             <Route path="/profile" element={<Profile />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/settings" element={<RoleRoute path="/settings"><Settings /></RoleRoute>} />
+            <Route path="*" element={<HomeRedirect />} />
           </Route>
           </Routes>
         </ErrorBoundary>
       </Suspense>
     </BrowserRouter>
   );
+}
+
+// Unknown path inside the shell: send the visitor to their own home page
+// (dashboard / new verification / reports depending on role).
+function HomeRedirect() {
+  const { user } = useOutletContext();
+  return <Navigate to={homeFor(user)} replace />;
 }
 
 // The signed-in shell: sidebar, topbar, page outlet and shared state.
@@ -195,7 +206,7 @@ function Workspace({ user, onLogout, theme, onToggleTheme }) {
   return (
     <div className="app">
       <Sidebar open={menuOpen} onClose={() => setMenuOpen(false)} user={user} onLogout={onLogout} />
-      <BottomNav />
+      <BottomNav user={user} />
       <div className="main">
         <Topbar
           page={page}

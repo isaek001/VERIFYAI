@@ -56,6 +56,13 @@ export const api = {
   login: (payload) => request("/api/auth/login", { method: "POST", body: JSON.stringify(payload) }),
   logout: () => request("/api/auth/logout", { method: "POST", body: "{}" }),
   me: () => request("/api/auth/me"),
+  // Every role may change only its own password.
+  changePassword: (payload) => request("/api/auth/password", { method: "POST", body: JSON.stringify(payload) }),
+
+  // Admin — account approval and access management.
+  listUsers: () => request("/api/admin/users"),
+  updateUser: (id, payload) =>
+    request(`/api/admin/users/${encodeURIComponent(id)}`, { method: "POST", body: JSON.stringify(payload) }),
 
   // Records
   getRecords: () => request("/api/records"),

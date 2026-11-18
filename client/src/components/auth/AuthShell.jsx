@@ -39,7 +39,7 @@ export default function AuthShell({ title, subtitle, children, footer }) {
 
           {children}
 
-          <div className="auth-switch">{footer}</div>
+          {footer && <div className="auth-switch">{footer}</div>}
         </div>
       </main>
     </div>

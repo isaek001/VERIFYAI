@@ -131,11 +131,40 @@ function tokenFrom(req) {
 const requireAuth = wrap(async (req, res, next) => {
   const user = await db.getSessionUser(tokenFrom(req));
   if (!user) return res.status(401).json({ error: "Sign in to continue." });
+  // Suspended / unapproved accounts lose access mid-session too. A 401
+  // (not 403) makes the client drop the stale session instead of looping
+  // on a page it can no longer use.
+  if (user.status !== "active") {
+    return res.status(401).json({ error: "Your account is not active. Contact the administrator." });
+  }
   req.user = user;
   next();
 });
 
+// Role gate — runs after requireAuth, so req.user is always set.
+//   admin     : everything (dashboard, archive, review, users, wallet)
+//   verifying : New verification + Profile
+//   records   : Reports + Profile
+// 403 (not 401): the caller is signed in, just not allowed here.
+const requireRole = (...roles) =>
+  wrap(async (req, res, next) => {
+    if (!req.user) return res.status(401).json({ error: "Sign in to continue." });
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ error: "Your account does not have access to this section." });
+    }
+    next();
+  });
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Values the API accepts for account role/status (kept in sync with the
+// sets in db.js — this is the validation at the API boundary).
+const USER_ROLES = new Set(["admin", "verifying", "records"]);
+const USER_STATUSES = new Set(["pending", "active", "suspended"]);
+// Roles a public sign-up may request. Admin is deliberately absent:
+// administrators are seeded, promoted by an existing admin, or created
+// by the signup bootstrap on a system that has no admin yet.
+const SIGNUP_ROLES = new Set(["verifying", "records"]);
 
 // Naive per-email throttle so a script can't brute-force the demo login.
 const loginFails = new Map(); // email -> { count, firstAt }
@@ -190,6 +219,7 @@ app.post("/api/auth/signup", wrap(async (req, res) => {
   const name = String(body.name ?? "").trim();
   const email = String(body.email ?? "").trim().toLowerCase();
   const password = String(body.password ?? "");
+  const role = String(body.role ?? "verifying").trim().toLowerCase();
 
   if (!name) return res.status(400).json({ error: "Enter your full name." });
   if (!EMAIL_RE.test(email)) return res.status(400).json({ error: "Enter a valid email address." });
@@ -197,6 +227,7 @@ app.post("/api/auth/signup", wrap(async (req, res) => {
     return res.status(403).json({ error: "Sign-up is restricted to approved email domains." });
   }
   if (password.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters." });
+  if (!SIGNUP_ROLES.has(role)) return res.status(400).json({ error: "Choose a valid account type." });
   // Throttle after validation so garbage bodies never consume the budget.
   if (rateLimited(`signup:${req.ip || "unknown"}`, 10, 60 * 60 * 1000)) {
     return res.status(429).json({ error: "Too many sign-up attempts from this network. Try again later." });
@@ -205,9 +236,22 @@ app.post("/api/auth/signup", wrap(async (req, res) => {
     return res.status(409).json({ error: "An account with that email already exists." });
   }
 
-  const user = await db.createUser({ name, email, password });
-  const token = await db.createSession(user.id);
-  res.status(201).json({ token, user });
+  // Sign-ups are pending until an admin approves them from the User
+  // accounts screen — no session is issued yet, so they cannot sign in.
+  // Exception: a system with no administrator at all (fresh deployment)
+  // promotes the first account so there is always someone to approve.
+  const bootstrap = (await db.countAdmins()) === 0;
+  const user = await db.createUser({
+    name,
+    email,
+    password,
+    role: bootstrap ? "admin" : role,
+    status: bootstrap ? "active" : "pending",
+  });
+  if (bootstrap) {
+    return res.status(201).json({ token: await db.createSession(user.id), user });
+  }
+  res.status(201).json({ pending: true, user });
 }));
 
 app.post("/api/auth/login", wrap(async (req, res) => {
@@ -232,6 +276,16 @@ app.post("/api/auth/login", wrap(async (req, res) => {
     return res.status(401).json({ error: "Email or password is incorrect." });
   }
 
+  // Correct password, but the account cannot sign in yet. Checked after
+  // the password so a wrong guess still gets the generic 401 (no account
+  // enumeration), and no lockout is recorded — nothing was guessed wrong.
+  if (user.status === "pending") {
+    return res.status(403).json({ error: "This account is awaiting approval by an administrator." });
+  }
+  if (user.status !== "active") {
+    return res.status(403).json({ error: "This account has been suspended. Contact the administrator." });
+  }
+
   loginFails.delete(email);
   res.json({ token: await db.createSession(user.id), user: db.publicUser(user) });
 }));
@@ -245,12 +299,69 @@ app.get("/api/auth/me", requireAuth, (req, res) => {
   res.json({ user: req.user });
 });
 
-// Everything below needs a signed-in user.
-app.use("/api/analyze", requireAuth);
+// Change your own password — the one thing every role may edit.
+app.post("/api/auth/password", requireAuth, wrap(async (req, res) => {
+  const body = req.body || {};
+  const current = String(body.currentPassword ?? "");
+  const next = String(body.newPassword ?? "");
+  if (!current || !next) return res.status(400).json({ error: "Enter your current and new password." });
+  if (next.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters." });
+  if (next === current) return res.status(400).json({ error: "Choose a password different from your current one." });
+  // Throttle: proves the caller knows the current password, so cap it.
+  if (rateLimited(`password:${req.user.id}`, 10, 15 * 60 * 1000)) {
+    return res.status(429).json({ error: "Too many attempts. Try again in 15 minutes." });
+  }
+  const user = await db.findUserById(req.user.id);
+  if (!user || !db.verifyUserPassword(user, current)) {
+    // 400, not 401: a form error must not drop the session.
+    return res.status(400).json({ error: "Your current password is incorrect." });
+  }
+  await db.setUserPassword(req.user.id, next);
+  res.json({ ok: true });
+}));
+
+// --- Admin: account approval --------------------------------------------
+// The admin section approves sign-ups and manages access. Officers never
+// reach these routes (requireRole), and no handler can touch the caller's
+// own row, so an admin cannot lock themselves out.
+app.get("/api/admin/users", requireAuth, requireRole("admin"), wrap(async (_req, res) => {
+  res.json({ users: await db.listUsers() });
+}));
+
+app.post("/api/admin/users/:id", requireAuth, requireRole("admin"), wrap(async (req, res) => {
+  const body = req.body || {};
+  const patch = {};
+  if (body.status !== undefined) {
+    if (!USER_STATUSES.has(String(body.status))) {
+      return res.status(400).json({ error: "Unknown account status." });
+    }
+    patch.status = String(body.status);
+  }
+  if (body.role !== undefined) {
+    if (!USER_ROLES.has(String(body.role))) {
+      return res.status(400).json({ error: "Unknown account role." });
+    }
+    patch.role = String(body.role);
+  }
+  if (!patch.role && !patch.status) return res.status(400).json({ error: "Nothing to update." });
+  if (req.params.id === req.user.id) {
+    return res.status(400).json({ error: "You cannot change your own account here." });
+  }
+
+  const user = await db.updateUserAccess(req.params.id, patch);
+  if (!user) return res.status(404).json({ error: "Account not found." });
+  res.json({ user });
+}));
+
+// Everything below needs a signed-in user. Analysis + verification belong
+// to the verification workspace (admin + verifying officers).
+app.use("/api/analyze", requireAuth, requireRole("admin", "verifying"));
+// Records are readable by every role (Reports needs them); writes are
+// gated per method below.
 app.use("/api/records", requireAuth);
-app.use("/api/verify", requireAuth);
-// KakaVerify wallet + purchase endpoints spend real money — never public.
-app.use("/api/kakaverify", requireAuth);
+app.use("/api/verify", requireAuth, requireRole("admin", "verifying"));
+// KakaVerify wallet + purchase endpoints spend real money — admin only.
+app.use("/api/kakaverify", requireAuth, requireRole("admin"));
 
 // --- Exam verification (New verification page) --------------------------
 // Pure compute: fetches the official record, reads the uploaded photo with
@@ -359,7 +470,7 @@ app.get("/api/records", wrap(async (req, res) => {
   res.json({ records: await db.listRecords(limit) });
 }));
 
-app.post("/api/records", wrap(async (req, res) => {
+app.post("/api/records", requireRole("admin", "verifying"), wrap(async (req, res) => {
   const body = req.body || {};
   if (body.status !== undefined && !RECORD_STATUSES.has(String(body.status))) {
     return res.status(400).json({ error: "Unknown record status." });
@@ -388,7 +499,7 @@ app.post("/api/records", wrap(async (req, res) => {
   res.status(201).json({ record });
 }));
 
-app.put("/api/records/:id", wrap(async (req, res) => {
+app.put("/api/records/:id", requireRole("admin"), wrap(async (req, res) => {
   const patch = { ...(req.body || {}) };
   if (patch.status !== undefined && !RECORD_STATUSES.has(String(patch.status))) {
     return res.status(400).json({ error: "Unknown record status." });
@@ -401,7 +512,7 @@ app.put("/api/records/:id", wrap(async (req, res) => {
   res.json({ record });
 }));
 
-app.delete("/api/records/:id", wrap(async (req, res) => {
+app.delete("/api/records/:id", requireRole("admin"), wrap(async (req, res) => {
   const removed = await db.deleteRecord(req.params.id);
   if (!removed) return res.status(404).json({ error: "Record not found" });
   res.json({ ok: true });

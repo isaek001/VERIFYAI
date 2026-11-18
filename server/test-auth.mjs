@@ -65,17 +65,48 @@ console.log("\n3. signup validation");
   check("short password -> 400", r3.status === 400, `got ${r3.status}`);
 }
 
-console.log("\n4. signup succeeds and returns a session");
+console.log("\n4. signup creates a pending account (no session until approved)");
 let token = null;
 let userId = null;
 {
   const r = await call("/api/auth/signup", { method: "POST", body: newUser });
   check("signup 201", r.status === 201, `got ${r.status} ${JSON.stringify(r.data)}`);
-  check("token returned", typeof r.data?.token === "string" && r.data.token.length >= 32);
+  check("no token until approved", !r.data?.token, `token: ${r.data?.token}`);
+  check(
+    "account created as pending",
+    r.data?.pending === true && r.data?.user?.status === "pending",
+    JSON.stringify(r.data)
+  );
   check("user has no password fields", r.data?.user && !("hash" in r.data.user) && !("salt" in r.data.user));
   check("user email normalized", r.data?.user?.email === newUser.email.toLowerCase());
-  token = r.data?.token;
   userId = r.data?.user?.id;
+
+  // The password is right, but a pending account may not sign in yet.
+  const blocked = await call("/api/auth/login", { method: "POST", body: newUser });
+  check("pending login -> 403", blocked.status === 403, `got ${blocked.status}`);
+
+  // The admin (seeded demo account) approves the sign-up — promoting it
+  // to admin so the rest of the suite can exercise every route.
+  const admin = await call("/api/auth/login", {
+    method: "POST",
+    body: { email: "officer@fcahpt.gov.ng", password: "Passw0rd!" },
+  });
+  check("admin login 200", admin.status === 200, `got ${admin.status}`);
+  const approve = await call(`/api/admin/users/${encodeURIComponent(userId)}`, {
+    method: "POST",
+    token: admin.data?.token,
+    body: { status: "active", role: "admin" },
+  });
+  check(
+    "admin approves the sign-up",
+    approve.status === 200 && approve.data?.user?.status === "active",
+    `got ${approve.status} ${JSON.stringify(approve.data)}`
+  );
+
+  const ok = await call("/api/auth/login", { method: "POST", body: newUser });
+  check("approved login -> 200 + token", ok.status === 200 && typeof ok.data?.token === "string", `got ${ok.status}`);
+  check("login returns the role", ok.data?.user?.role === "admin", ok.data?.user?.role);
+  token = ok.data?.token;
 }
 
 console.log("\n5. duplicate signup rejected");
@@ -123,7 +154,98 @@ console.log("\n8. protected routes accept a valid token");
   check("DELETE record 200 (cleanup)", del.status === 200, `got ${del.status}`);
 }
 
-console.log("\n9. logout invalidates the token");
+console.log("\n9. role-based access (the two seeded officer accounts)");
+{
+  // Verifying officer: verification workspace, read/create records, no
+  // review decisions, no admin area.
+  const v = await call("/api/auth/login", {
+    method: "POST",
+    body: { email: "isaacyakubu5@gmail.com", password: "12345678" },
+  });
+  check("verifying officer login 200", v.status === 200, `got ${v.status}`);
+  check("verifying officer role", v.data?.user?.role === "verifying", v.data?.user?.role);
+  const vt = v.data?.token;
+
+  const g = await call("/api/records", { token: vt });
+  check("verifying reads records", g.status === 200, `got ${g.status}`);
+  const an = await call("/api/analyze", { method: "POST", token: vt, body: { candidateId: "X", exam: "e", result: "r" } });
+  check("verifying can analyze", an.status === 200, `got ${an.status}`);
+  const p = await call("/api/records", {
+    method: "POST",
+    token: vt,
+    body: { candidateId: `RBAC-${stamp}`, exam: "PCR", result: "Negative" },
+  });
+  check("verifying creates records", p.status === 201, `got ${p.status}`);
+  const u = await call(`/api/records/${p.data?.record?.id}`, {
+    method: "PUT",
+    token: vt,
+    body: { status: "Verified" },
+  });
+  check("verifying cannot review records -> 403", u.status === 403, `got ${u.status}`);
+  const au = await call("/api/admin/users", { token: vt });
+  check("verifying cannot manage users -> 403", au.status === 403, `got ${au.status}`);
+  const kv = await call("/api/kakaverify/balance", { token: vt });
+  check("verifying cannot reach the wallet -> 403", kv.status === 403, `got ${kv.status}`);
+  // Remove the record this check created (admin token from section 4).
+  const del = await call(`/api/records/${p.data?.record?.id}`, { method: "DELETE", token });
+  check("cleanup RBAC record", del.status === 200, `got ${del.status}`);
+
+  // Records officer: read-only Reports access, nothing else.
+  const r = await call("/api/auth/login", {
+    method: "POST",
+    body: { email: "isaacyakubu54@gmail.com", password: "12345678" },
+  });
+  check("records officer login 200", r.status === 200, `got ${r.status}`);
+  check("records officer role", r.data?.user?.role === "records", r.data?.user?.role);
+  const rt = r.data?.token;
+  const rg = await call("/api/records", { token: rt });
+  check("records officer reads records", rg.status === 200, `got ${rg.status}`);
+  const rp = await call("/api/records", {
+    method: "POST",
+    token: rt,
+    body: { candidateId: `RBAC-${stamp}`, exam: "PCR", result: "Negative" },
+  });
+  check("records officer cannot create records -> 403", rp.status === 403, `got ${rp.status}`);
+  const rv = await call("/api/verify", {
+    method: "POST",
+    token: rt,
+    body: { examType: "waec", examNumber: "1234", examYear: "2024", image: "data:image/png;base64,AAAA" },
+  });
+  check("records officer cannot verify -> 403", rv.status === 403, `got ${rv.status}`);
+  const ra = await call("/api/admin/users", { token: rt });
+  check("records officer cannot manage users -> 403", ra.status === 403, `got ${ra.status}`);
+}
+
+console.log("\n10. password change (every role may edit only this)");
+{
+  const r = await call("/api/auth/password", {
+    method: "POST",
+    token,
+    body: { currentPassword: newUser.password, newPassword: "NewSecret42!" },
+  });
+  check("change password 200", r.status === 200, `got ${r.status} ${JSON.stringify(r.data)}`);
+  const wrong = await call("/api/auth/password", {
+    method: "POST",
+    token,
+    body: { currentPassword: "not-it-at-all", newPassword: "Another42!!" },
+  });
+  check("wrong current password -> 400", wrong.status === 400, `got ${wrong.status}`);
+  const short = await call("/api/auth/password", {
+    method: "POST",
+    token,
+    body: { currentPassword: "NewSecret42!", newPassword: "short" },
+  });
+  check("short new password -> 400", short.status === 400, `got ${short.status}`);
+  const anon = await call("/api/auth/password", {
+    method: "POST",
+    body: { currentPassword: "x", newPassword: "longenough" },
+  });
+  check("password change requires a session -> 401", anon.status === 401, `got ${anon.status}`);
+  const loginNew = await call("/api/auth/login", { method: "POST", body: { email: newUser.email, password: "NewSecret42!" } });
+  check("login with the new password", loginNew.status === 200, `got ${loginNew.status}`);
+}
+
+console.log("\n11. logout invalidates the token");
 {
   const r = await call("/api/auth/logout", { method: "POST", token });
   check("logout 200", r.status === 200, `got ${r.status}`);
@@ -133,7 +255,7 @@ console.log("\n9. logout invalidates the token");
   check("records reject dead token -> 401", g.status === 401, `got ${g.status}`);
 }
 
-console.log("\n10. garbage tokens rejected");
+console.log("\n12. garbage tokens rejected");
 {
   const r = await call("/api/auth/me", { token: "not-a-real-token" });
   check("bad token -> 401", r.status === 401, `got ${r.status}`);

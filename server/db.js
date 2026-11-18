@@ -90,6 +90,13 @@ create table if not exists public.sessions (
 alter table public.sessions add column if not exists "expiresAt" timestamptz;
 update public.sessions set "expiresAt" = now() + interval '7 days' where "expiresAt" is null;
 
+-- Role-based access control (added later; idempotent for existing
+-- installs). Every account that predates the approval flow was created by
+-- the operator, so existing rows default to admin/active — sign-ups from
+-- the public page explicitly get an officer role and status 'pending'.
+alter table public.users add column if not exists role   text not null default 'admin';
+alter table public.users add column if not exists status text not null default 'active';
+
 create index if not exists records_created_at_idx on public.records ("createdAt" desc);
 
 -- Photo bytes column for databases created before image storage moved
@@ -261,7 +268,16 @@ async function updateRecord(id, patch) {
 
 function publicUser(user) {
   if (!user) return null;
-  return { id: user.id, name: user.name, email: user.email, createdAt: user.createdAt };
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    // Legacy rows (and callers that never set them) are treated as
+    // full-access admins — the server enforces the real values anyway.
+    role: user.role || "admin",
+    status: user.status || "active",
+    createdAt: user.createdAt,
+  };
 }
 
 async function findUserByEmail(email) {
@@ -276,16 +292,77 @@ async function findUserById(id) {
   return rows[0] || null;
 }
 
-async function createUser({ name, email, password }) {
+// Account types and lifecycle states (shared by signup + admin routes).
+const ROLES = new Set(["admin", "verifying", "records"]);
+const STATUSES = new Set(["pending", "active", "suspended"]);
+
+async function createUser({ name, email, password, role, status }) {
   const id = `usr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const emailNorm = String(email ?? "").trim().toLowerCase();
   const { salt, hash } = hashPassword(password);
+  // Safe defaults for internal callers (seeds): anything created outside
+  // the signup flow is an active admin unless the caller says otherwise.
+  // index.js validates the signup's role before it gets here.
+  const userRole = ROLES.has(role) ? role : "admin";
+  const userStatus = STATUSES.has(status) ? status : "active";
   const { rows } = await pool.query(
-    `insert into public.users (id, name, email, hash, salt, "createdAt")
-     values ($1, $2, $3, $4, $5, now()) returning *`,
-    [id, String(name ?? "").trim(), emailNorm, hash, salt]
+    `insert into public.users (id, name, email, hash, salt, role, status, "createdAt")
+     values ($1, $2, $3, $4, $5, $6, $7, now()) returning *`,
+    [id, String(name ?? "").trim(), emailNorm, hash, salt, userRole, userStatus]
   );
   return publicUser(rows[0]);
+}
+
+// --- Admin: account directory & access control ---------------------------
+
+// Pending sign-ups sort first so the approval queue leads the list.
+async function listUsers() {
+  const { rows } = await pool.query(
+    `select id, name, email, role, status, "createdAt"
+     from public.users
+     order by (case status when 'pending' then 0 else 1 end), "createdAt" desc`
+  );
+  return rows;
+}
+
+// Signup bootstrap: a system with no administrator yet (fresh
+// deployment) makes the first account the admin — everyone else waits
+// for approval like any other sign-up.
+async function countAdmins() {
+  const { rows } = await pool.query("select count(*)::int as n from public.users where role = 'admin'");
+  return rows[0]?.n ?? 0;
+}
+
+// Apply a role and/or status change. Values are validated by the caller
+// (index.js) — this only builds the update.
+async function updateUserAccess(id, patch) {
+  const sets = [];
+  const vals = [];
+  if (patch.role !== undefined) {
+    vals.push(patch.role);
+    sets.push(`role = $${vals.length}`);
+  }
+  if (patch.status !== undefined) {
+    vals.push(patch.status);
+    sets.push(`status = $${vals.length}`);
+  }
+  if (!sets.length) return findUserById(id);
+  vals.push(id);
+  const { rows } = await pool.query(
+    `update public.users set ${sets.join(", ")} where id = $${vals.length} returning *`,
+    vals
+  );
+  return rows[0] ? publicUser(rows[0]) : null;
+}
+
+// Rotate an account's password (hashing happens in passwords.js).
+async function setUserPassword(id, password) {
+  const { salt, hash } = hashPassword(password);
+  const { rows } = await pool.query(
+    "update public.users set hash = $1, salt = $2 where id = $3 returning id",
+    [hash, salt, id]
+  );
+  return rows.length > 0;
 }
 
 function verifyUserPassword(user, password) {
@@ -346,6 +423,22 @@ async function seedDemoAccount() {
   });
 }
 
+// The two duty accounts that ship with the system: a verifying officer
+// and a records officer, both pre-approved (active) — the operator's own
+// accounts. Sign-ups from the public page start pending and are approved
+// by an admin from the User accounts screen.
+const OFFICER_ACCOUNTS = [
+  { name: "Verifying Officer", email: "isaacyakubu5@gmail.com", password: "12345678", role: "verifying" },
+  { name: "Records Officer", email: "isaacyakubu54@gmail.com", password: "12345678", role: "records" },
+];
+
+async function seedOfficerAccounts() {
+  for (const account of OFFICER_ACCOUNTS) {
+    if (await findUserByEmail(account.email)) continue; // never touches an existing row
+    await createUser({ ...account, status: "active" });
+  }
+}
+
 // Boot: create schema + seed. Failures are logged, never fatal — a
 // process.exit here would kill every Vercel invocation (even /api/health)
 // and a transient Supabase hiccup should not brick the whole app.
@@ -362,6 +455,13 @@ if (!isProduction || process.env.ALLOW_DEMO_LOGIN === "1") {
     console.error("Demo account seed failed:", e.message);
   }
 }
+// Officer accounts are the product's default logins, so they seed in
+// production too (idempotent: an existing row is never modified).
+try {
+  await seedOfficerAccounts();
+} catch (e) {
+  console.error("Officer account seed failed:", e.message);
+}
 
 export default {
   listRecords,
@@ -374,6 +474,10 @@ export default {
   findUserByEmail,
   findUserById,
   createUser,
+  listUsers,
+  countAdmins,
+  updateUserAccess,
+  setUserPassword,
   verifyUserPassword,
   createSession,
   getSessionUser,

@@ -786,17 +786,17 @@ h1 {
   background: var(--card);
   border: 1px solid var(--line-soft);
   border-radius: 14px;
-  padding: 18px 20px;
+  padding: 16px 18px;
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 16px;
   cursor: pointer;
   transition: border-color 0.15s, box-shadow 0.15s, background 0.15s, transform 0.1s;
 }
 
 .record-card:hover {
   border-color: var(--tint-green-line-3);
-  box-shadow: 0 4px 16px rgba(10, 44, 31, 0.08);
+  box-shadow: 0 3px 14px rgba(10, 44, 31, 0.07);
   background: var(--surf-hover);
 }
 
@@ -810,18 +810,18 @@ h1 {
   transform: scale(0.995);
 }
 
+/* Flat tinted initials tile — quieter than a gradient */
 .record-avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, var(--tint-green), var(--tint-green-soft));
-  color: var(--green-dark);
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  background: var(--tint-green);
+  color: var(--green-text);
   display: grid;
   place-items: center;
-  font-size: 17px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 600;
   flex-shrink: 0;
-  box-shadow: inset 0 0 0 1px rgba(21, 122, 61, 0.15);
 }
 
 .record-body {
@@ -829,20 +829,31 @@ h1 {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
 }
 
+/* Candidate ID + name on the left, status pill pinned right */
 .record-identity {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+
+.record-names {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 9px;
+  min-width: 0;
 }
 
 .record-id {
   color: var(--ink);
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: -0.2px;
+  font-size: 15.5px;
+  font-weight: 600;
+  letter-spacing: -0.1px;
 }
 
 .cell-sub {
@@ -850,11 +861,12 @@ h1 {
   font-size: 13px;
 }
 
+/* Meta row: exam / result / date as evenly weighted columns that
+   reflow into fewer columns as the card narrows */
 .record-fields {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  margin-top: 2px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px 26px;
   min-width: 0;
 }
 
@@ -866,40 +878,43 @@ h1 {
 }
 
 .record-label {
-  color: var(--muted-2);
+  color: var(--muted-3);
   font-size: 10.5px;
-  letter-spacing: 1.2px;
+  letter-spacing: 0.7px;
   text-transform: uppercase;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .record-value {
   color: var(--text-2);
-  font-size: 14.5px;
+  font-size: 14px;
   min-width: 0;
+  overflow-wrap: break-word;
 }
 
-.record-value .badge {
-  margin-top: 1px;
+/* Status pill inside cards: a touch tighter than the global badge */
+.record-card .badge {
   padding: 4px 10px;
+  font-size: 12px;
 }
 
 .record-actions {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
   flex-shrink: 0;
 }
 
+/* Ghost download button — neutral at rest, brand tint on hover */
 .btn-download {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  background: var(--card);
+  gap: 7px;
+  background: transparent;
   border: 1px solid var(--line);
-  color: var(--green);
-  padding: 7px 11px;
+  color: var(--text-2);
+  padding: 7px 12px;
   border-radius: 9px;
   font-size: 12.5px;
   font-weight: 600;
@@ -910,7 +925,8 @@ h1 {
 
 .btn-download:hover:not(:disabled) {
   background: var(--tint-green-soft);
-  border-color: var(--tint-green-line);
+  border-color: var(--tint-green-line-2);
+  color: var(--green);
 }
 
 .btn-download:disabled {
@@ -919,20 +935,64 @@ h1 {
   border-color: var(--line-soft);
 }
 
-.btn-label {
-  font-size: 11.5px;
-}
-
 .record-open {
+  display: flex;
   color: var(--muted-3);
-  margin-top: 2px;
 }
 
-/* Subtle divider between field groups on dense cards */
-.record-card .record-fields + .record-actions {
-  border-left: 1px solid var(--line-soft);
-  padding-left: 16px;
-  margin-left: 12px;
+/* Tablet tier (sidebar still visible): the card body gets narrow here,
+   so the meta reflows to two columns instead of one sparse stack. */
+@media (max-width: 900px) {
+  .record-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px 16px;
+  }
+
+  .record-field:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Phone: the card stacks — identity line, two-column meta, and a
+   full-width action row below a hairline divider */
+@media (max-width: 760px) {
+  .record-card {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 12px 14px;
+    padding: 15px 16px;
+  }
+
+  .record-avatar {
+    width: 40px;
+    height: 40px;
+  }
+
+  .record-body {
+    flex: 1 1 auto;
+    gap: 9px;
+  }
+
+  .record-actions {
+    flex: 1 1 100%;
+    justify-content: space-between;
+    gap: 12px;
+    border-top: 1px solid var(--line-soft);
+    padding-top: 12px;
+  }
+
+  .btn-download {
+    flex: 1;
+    justify-content: center;
+    padding: 9px 12px; /* comfortable touch target */
+  }
+}
+
+/* Very narrow phones (≈320px): meta collapses to one column */
+@media (max-width: 350px) {
+  .record-fields {
+    grid-template-columns: 1fr;
+  }
 }
 
 .badge {
@@ -2417,6 +2477,110 @@ h1 {
   color: var(--muted-2);
 }
 
+/* Account-type picker on the sign-up form */
+.role-pick {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.role-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  text-align: left;
+  padding: 12px 13px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.role-opt:hover {
+  border-color: var(--line-strong);
+}
+
+.role-opt.on {
+  border-color: var(--green);
+  background: var(--tint-green-soft);
+  box-shadow: 0 0 0 3px rgba(21, 122, 61, 0.12);
+}
+
+.role-opt svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--muted);
+}
+
+.role-opt.on svg {
+  color: var(--green);
+}
+
+.role-opt strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.role-opt em {
+  display: block;
+  font-style: normal;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted-2);
+  margin-top: 3px;
+}
+
+/* Awaiting-approval screen shown after a successful sign-up */
+.auth-pending {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.pending-ico {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--tint-amber);
+  color: var(--amber);
+  margin-bottom: 6px;
+}
+
+.auth-pending h2 {
+  font-family: "Manrope", sans-serif;
+  font-size: 19px;
+  margin: 0;
+  color: var(--ink);
+}
+
+.auth-pending p {
+  margin: 0 0 18px;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.auth-pending p strong {
+  color: var(--ink);
+}
+
+.auth-pending .btn {
+  text-decoration: none;
+}
+
+@media (max-width: 420px) {
+  .role-pick {
+    grid-template-columns: 1fr;
+  }
+}
+
 .auth-loading {
   min-height: 100vh;
   min-height: 100dvh;
@@ -2614,6 +2778,130 @@ h1 {
     width: 72px;
     height: 72px;
     font-size: 25px;
+  }
+}
+
+/* Officer profile: change-password form (the only editable field) */
+.pwd-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.pwd-form .pwd-submit {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+/* ------------------------- user accounts (admin) ------------------------ */
+
+.users-panel {
+  margin-bottom: 24px;
+}
+
+.panel-head h2 .badge {
+  vertical-align: middle;
+  margin-left: 6px;
+}
+
+.users-empty {
+  margin: 0;
+  padding: 4px 0 12px;
+  font-size: 14.5px;
+}
+
+.user-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.user-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line-soft);
+  flex-wrap: wrap;
+}
+
+.user-list .user-row:first-child {
+  border-top: 0;
+  padding-top: 4px;
+}
+
+.user-row .avatar {
+  width: 38px;
+  height: 38px;
+  font-size: 12.5px;
+}
+
+.user-meta {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.user-meta strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14.5px;
+  color: var(--ink);
+}
+
+/* Direct child only — the "You" chip inside <strong> must keep its own look */
+.user-meta > span {
+  display: block;
+  font-size: 13px;
+  color: var(--muted-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-you {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--green-deep-text);
+  background: var(--tint-green);
+  border: 1px solid var(--tint-green-line-2);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+
+.user-role {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.user-joined {
+  font-size: 13px;
+  color: var(--muted-2);
+  white-space: nowrap;
+}
+
+.user-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+@media (max-width: 760px) {
+  .user-meta {
+    flex-basis: calc(100% - 52px);
+  }
+
+  .user-actions {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .user-actions .btn {
+    flex: 1;
+    justify-content: center;
   }
 }
 

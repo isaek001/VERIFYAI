@@ -1,6 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { Icon, icons } from "./Icon.jsx";
-import { ROUTES } from "../lib/routes.js";
+import { routesFor } from "../lib/routes.js";
 import { initials } from "../lib/format.js";
 
 export default function Sidebar({ open, onClose, user, onLogout }) {
@@ -27,7 +27,8 @@ export default function Sidebar({ open, onClose, user, onLogout }) {
 
         <div className="side-label">WORKSPACE</div>
         <nav className="side-nav">
-          {ROUTES.map((item) => (
+          {/* Only the pages this role may open (see lib/routes.js). */}
+          {routesFor(user).map((item) => (
             <NavLink
               key={item.path}
               to={item.path}

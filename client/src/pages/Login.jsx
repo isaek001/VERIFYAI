@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { api, setSession } from "../api.js";
 import { Icon, icons } from "../components/Icon.jsx";
 import AuthShell from "../components/auth/AuthShell.jsx";
@@ -48,7 +48,10 @@ export default function Login({ onAuth }) {
       setSession(data);
       onAuth(data);
     } catch (err) {
-      setFormError(err.status === 429 ? err.message : "Email or password is incorrect.");
+      // 403 = pending approval / suspended (server explains which);
+      // 429 = lockout. Everything else is the generic credential error.
+      if (err.status === 403 || err.status === 429) setFormError(err.message);
+      else setFormError("Email or password is incorrect.");
       if (err.status === 401) setErrors({ password: "Check your password and try again." });
     } finally {
       setBusy(false);
@@ -67,14 +70,6 @@ export default function Login({ onAuth }) {
     <AuthShell
       title="Welcome back"
       subtitle="Sign in with your Federal College of Animal Health and Production Technology staff account to continue."
-      footer={
-        <>
-          New to Verify AI?{" "}
-          <Link className="link" to="/signup">
-            Create an account
-          </Link>
-        </>
-      }
     >
       <form className="auth-form" onSubmit={submit} noValidate>
         {formError && (

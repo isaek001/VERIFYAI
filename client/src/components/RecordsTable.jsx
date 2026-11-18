@@ -7,7 +7,6 @@ const FIELDS = [
   { key: "exam", label: "EXAMINATION" },
   { key: "result", label: "RESULT" },
   { key: "date", label: "DATE SUBMITTED" },
-  { key: "status", label: "STATUS" },
 ];
 
 const downloadPdf = async (record) => {
@@ -57,23 +56,20 @@ export default function RecordsTable({ records, onOpen, emptyHint = true }) {
             </div>
             <div className="record-body">
               <div className="record-identity">
-                <strong className="record-id">{r.candidateId}</strong>
-                <span className="cell-sub">{r.candidateName || "—"}</span>
+                <div className="record-names">
+                  <strong className="record-id">{r.candidateId}</strong>
+                  <span className="cell-sub">{r.candidateName || "—"}</span>
+                </div>
+                <span className={`badge ${statusClass(r.status)}`}>{r.status}</span>
               </div>
               <div className="record-fields">
                 {FIELDS.map((f) => {
-                  let value;
-                  if (f.key === "exam") {
-                    value = r.exam;
-                  } else if (f.key === "result") {
-                    value = r.result || "—";
-                  } else if (f.key === "date") {
-                    value = formatDate(r.createdAt);
-                  } else {
-                    value = (
-                      <span className={`badge ${statusClass(r.status)}`}>{r.status}</span>
-                    );
-                  }
+                  const value =
+                    f.key === "exam"
+                      ? r.exam
+                      : f.key === "result"
+                        ? r.result || "—"
+                        : formatDate(r.createdAt);
                   return (
                     <div key={f.key} className="record-field">
                       <span className="record-label">{f.label}</span>
@@ -104,7 +100,7 @@ export default function RecordsTable({ records, onOpen, emptyHint = true }) {
                 ) : (
                   <>
                     <Icon d={icons.download} size={14} />
-                    <span className="btn-label">Download PDF</span>
+                    <span>Download PDF</span>
                   </>
                 )}
               </button>
